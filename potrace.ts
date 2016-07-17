@@ -124,15 +124,6 @@ module Potrace {
       public alpha = 0;
    }
 
-   interface Parameters {
-      isReady?: boolean;
-      turnpolicy?: string;
-      turdsize?: number;
-      optcurve?: boolean;
-      alphamax?: number;
-      opttolerance?: number;
-   }
-
    function findNext(bm1: Bitmap, point: Point): Point {
       let i = bm1.w * point.y + point.x;
       while (i < bm1.size && bm1.data[i] !== 1) {
@@ -1048,14 +1039,13 @@ module Potrace {
    export class Potrace {
       private bm: Bitmap;
       private pathlist: Path[] = [];
+
       public img = new Image();
-      private info = {
-         turnpolicy: 'minority',
-         turdsize: 2,
-         optcurve: true,
-         alphamax: 1,
-         opttolerance: 0.2
-      };
+      public turnPolicy = 'minority';
+      public turdSize = 2;
+      public optCurve = true;
+      public alphaMax = 1;
+      public optTolerance = 0.2;
 
       public complete: (p: Potrace) => void = null;
 
@@ -1081,9 +1071,9 @@ module Potrace {
             const bm1 = bm.copy();
             let currentPoint = new Point(0, 0);
             while (currentPoint = findNext(bm1, currentPoint)) {
-               const path = findPath(bm, this.info.turnpolicy, bm1, currentPoint);
+               const path = findPath(bm, this.turnPolicy, bm1, currentPoint);
                xorPath(bm1, path);
-               if (path.area > this.info.turdsize) {
+               if (path.area > this.turdSize) {
                   pathlist.push(path);
                }
             }
@@ -1100,10 +1090,10 @@ module Potrace {
                   reverse(path);
                }
 
-               smooth(path, this.info.alphamax);
+               smooth(path, this.alphaMax);
 
-               if (this.info.optcurve) {
-                  optiCurve(path, this.info.opttolerance);
+               if (this.optCurve) {
+                  optiCurve(path, this.optTolerance);
                }
             }
 
@@ -1121,15 +1111,6 @@ module Potrace {
 
       public loadFromURL(url: string): void {
          this.img.src = url;
-      }
-
-      public setParameter(obj: Parameters): void {
-         let key: string;
-         for (key in obj) {
-            if (obj.hasOwnProperty(key)) {
-               this.info[key] = obj[key];
-            }
-         }
       }
 
       private path(curve: Curve, scale: number): string {

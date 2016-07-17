@@ -932,13 +932,11 @@ var Potrace;
             var _this = this;
             this.pathlist = [];
             this.img = new Image();
-            this.info = {
-                turnpolicy: 'minority',
-                turdsize: 2,
-                optcurve: true,
-                alphamax: 1,
-                opttolerance: 0.2
-            };
+            this.turnPolicy = 'minority';
+            this.turdSize = 2;
+            this.optCurve = true;
+            this.alphaMax = 1;
+            this.optTolerance = 0.2;
             this.complete = null;
             var img = this.img;
             img.onload = function () {
@@ -960,9 +958,9 @@ var Potrace;
                 var bm1 = bm.copy();
                 var currentPoint = new Point(0, 0);
                 while (currentPoint = findNext(bm1, currentPoint)) {
-                    var path = findPath(bm, _this.info.turnpolicy, bm1, currentPoint);
+                    var path = findPath(bm, _this.turnPolicy, bm1, currentPoint);
                     xorPath(bm1, path);
-                    if (path.area > _this.info.turdsize) {
+                    if (path.area > _this.turdSize) {
                         pathlist.push(path);
                     }
                 }
@@ -976,9 +974,9 @@ var Potrace;
                     if (path.sign === '-') {
                         reverse(path);
                     }
-                    smooth(path, _this.info.alphamax);
-                    if (_this.info.optcurve) {
-                        optiCurve(path, _this.info.opttolerance);
+                    smooth(path, _this.alphaMax);
+                    if (_this.optCurve) {
+                        optiCurve(path, _this.optTolerance);
                     }
                 }
                 if (_this.complete) {
@@ -994,14 +992,6 @@ var Potrace;
         };
         Potrace.prototype.loadFromURL = function (url) {
             this.img.src = url;
-        };
-        Potrace.prototype.setParameter = function (obj) {
-            var key;
-            for (key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    this.info[key] = obj[key];
-                }
-            }
         };
         Potrace.prototype.path = function (curve, scale) {
             var n = curve.n;

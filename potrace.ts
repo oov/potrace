@@ -135,44 +135,6 @@ module Potrace {
       opttolerance?: number;
    }
 
-   var imgElement = document.createElement('img'),
-      imgCanvas = document.createElement('canvas'),
-      bm: Bitmap = null,
-      pathlist: Path[] = [],
-      callback: () => void = null,
-      info = {
-         isReady: false,
-         turnpolicy: 'minority',
-         turdsize: 2,
-         optcurve: true,
-         alphamax: 1,
-         opttolerance: 0.2
-      };
-
-   imgElement.onload = () => {
-      loadCanvas();
-      loadBm();
-   };
-
-   function loadCanvas(): void {
-      imgCanvas.width = imgElement.width;
-      imgCanvas.height = imgElement.height;
-      imgCanvas.getContext('2d').drawImage(imgElement, 0, 0);
-   }
-
-   function loadBm(): void {
-      const ctx = imgCanvas.getContext('2d');
-      bm = new Bitmap(imgCanvas.width, imgCanvas.height);
-      const data = ctx.getImageData(0, 0, bm.w, bm.h).data;
-      const l = data.length;
-      for (let i = 0, j = 0, color: number; i < l; i += 4, ++j) {
-         color = 0.2126 * data[i] + 0.7153 * data[i + 1] +
-            0.0721 * data[i + 2];
-         bm.data[j] = (color < 128 ? 1 : 0);
-      }
-      info.isReady = true;
-   }
-
    function findNext(bm1: Bitmap, point: Point): Point {
       let i = bm1.w * point.y + point.x;
       while (i < bm1.size && bm1.data[i] !== 1) {
@@ -199,7 +161,7 @@ module Potrace {
       return 0;
    }
 
-   function findPath(bm1: Bitmap, point: Point): Path {
+   function findPath(bm: Bitmap, infoTurnpolicy: string, bm1: Bitmap, point: Point): Path {
       const path = new Path();
       let x = point.x, y = point.y,
          dirx = 0, diry = 1, tmp: number;
@@ -234,11 +196,11 @@ module Potrace {
          const r = bm1.at(x + (dirx - diry - 1) / 2, y + (diry + dirx - 1) / 2);
 
          if (r && !l) {
-            if (info.turnpolicy === 'right' ||
-               (info.turnpolicy === 'black' && path.sign === '+') ||
-               (info.turnpolicy === 'white' && path.sign === '-') ||
-               (info.turnpolicy === 'majority' && majority(bm1, x, y)) ||
-               (info.turnpolicy === 'minority' && !majority(bm1, x, y))) {
+            if (infoTurnpolicy === 'right' ||
+               (infoTurnpolicy === 'black' && path.sign === '+') ||
+               (infoTurnpolicy === 'white' && path.sign === '-') ||
+               (infoTurnpolicy === 'majority' && majority(bm1, x, y)) ||
+               (infoTurnpolicy === 'minority' && !majority(bm1, x, y))) {
                tmp = dirx;
                dirx = -diry;
                diry = tmp;
@@ -274,21 +236,6 @@ module Potrace {
                bm1.flip(j, minY);
             }
             y1 = y;
-         }
-      }
-   }
-
-   function bmToPathlist(): void {
-      let bm1 = bm.copy(),
-         currentPoint = new Point(0, 0),
-         path: Path;
-
-
-      while (currentPoint = findNext(bm1, currentPoint)) {
-         path = findPath(bm1, currentPoint);
-         xorPath(bm1, path);
-         if (path.area > info.turdsize) {
-            pathlist.push(path);
          }
       }
    }
@@ -845,7 +792,7 @@ module Potrace {
       }
    }
 
-   function smooth(path: Path): void {
+   function smooth(path: Path, infoAlphamax: number): void {
       const m = path.curve.n, curve = path.curve;
       for (let i = 0; i < m; ++i) {
          const j = mod(i + 1, m);
@@ -862,7 +809,7 @@ module Potrace {
          }
          curve.alpha0[j] = alpha;
 
-         if (alpha >= info.alphamax) {
+         if (alpha >= infoAlphamax) {
             curve.tag[j] = 'CORNER';
             curve.c[3 * j + 1] = curve.vertex[j];
             curve.c[3 * j + 2] = p4;
@@ -1004,7 +951,7 @@ module Potrace {
       return false;
    }
 
-   function optiCurve(path: Path): void {
+   function optiCurve(path: Path, infoOpttolerance: number): void {
       const curve = path.curve, m = curve.n, vert = curve.vertex,
          pt = new Array(m + 1),
          pen = new Array(m + 1),
@@ -1046,7 +993,7 @@ module Potrace {
          len[j] = len[j - 1] + 1;
 
          for (let i = j - 2; i >= 0; --i) {
-            const r = opti_penalty(path, i, mod(j, m), o, info.opttolerance, convc, areac);
+            const r = opti_penalty(path, i, mod(j, m), o, infoOpttolerance, convc, areac);
             if (r) {
                break;
             }
@@ -1098,133 +1045,139 @@ module Potrace {
       path.curve = ocurve;
    }
 
-   function processPath() {
-      for (let i = 0; i < pathlist.length; ++i) {
-         const path = pathlist[i];
-         calcSums(path);
-         calcLon(path);
-         bestPolygon(path);
-         adjustVertices(path);
-
-         if (path.sign === '-') {
-            reverse(path);
-         }
-
-         smooth(path);
-
-         if (info.optcurve) {
-            optiCurve(path);
-         }
-      }
-
-   }
-
-   function clear() {
-      bm = null;
-      pathlist = [];
-      callback = null;
-      info.isReady = false;
-   }
-
    // --------
 
-   export function loadImageFromFile(file: File): void {
-      if (info.isReady) {
-         clear();
+   export class Potrace {
+      private bm: Bitmap;
+      private pathlist: Path[] = [];
+      public img = new Image();
+      private info = {
+         turnpolicy: 'minority',
+         turdsize: 2,
+         optcurve: true,
+         alphamax: 1,
+         opttolerance: 0.2
+      };
+
+      public complete: (p: Potrace) => void = null;
+
+      constructor() {
+         const img = this.img;
+         img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            this.bm = new Bitmap(canvas.width, canvas.height);
+            const bm = this.bm;
+            const data = canvas.getContext('2d').getImageData(0, 0, bm.w, bm.h).data;
+            const l = data.length;
+            for (let i = 0, j = 0, color: number; i < l; i += 4, ++j) {
+               color = 0.2126 * data[i] + 0.7153 * data[i + 1] +
+                  0.0721 * data[i + 2];
+               bm.data[j] = (color < 128 ? 1 : 0);
+            }
+
+            // bitmap to pathlist
+            const pathlist = this.pathlist;
+            const bm1 = bm.copy();
+            let currentPoint = new Point(0, 0);
+            while (currentPoint = findNext(bm1, currentPoint)) {
+               const path = findPath(bm, this.info.turnpolicy, bm1, currentPoint);
+               xorPath(bm1, path);
+               if (path.area > this.info.turdsize) {
+                  pathlist.push(path);
+               }
+            }
+
+            // process path
+            for (let i = 0; i < pathlist.length; ++i) {
+               const path = pathlist[i];
+               calcSums(path);
+               calcLon(path);
+               bestPolygon(path);
+               adjustVertices(path);
+
+               if (path.sign === '-') {
+                  reverse(path);
+               }
+
+               smooth(path, this.info.alphamax);
+
+               if (this.info.optcurve) {
+                  optiCurve(path, this.info.opttolerance);
+               }
+            }
+
+            if (this.complete) {
+               this.complete(this);
+            }
+         };
       }
-      const reader = new FileReader();
-      const imgE = imgElement;
-      reader.onload = e => imgE.src = reader.result;
-      reader.readAsDataURL(file);
-   }
 
-   export function loadImageFromUrl(url: string): void {
-      if (info.isReady) {
-         clear();
+      public loadFromFile(file: File): void {
+         const fr = new FileReader();
+         fr.onload = e => this.img.src = fr.result;
+         fr.readAsDataURL(file);
       }
-      imgElement.src = url;
-   }
 
-   export function setParameter(obj: Parameters): void {
-      let key: string;
-      for (key in obj) {
-         if (obj.hasOwnProperty(key)) {
-            info[key] = obj[key];
-         }
+      public loadFromURL(url: string): void {
+         this.img.src = url;
       }
-   }
 
-   export function process(c: () => void) {
-      if (c) {
-         callback = c;
-      }
-      if (!info.isReady) {
-         setTimeout(process, 100);
-         return;
-      }
-      bmToPathlist();
-      processPath();
-      callback();
-      callback = null;
-   }
-
-   export function getSVG(size: number, opt_type: string): string {
-
-      function path(curve: Curve) {
-
-         function bezier(i: number) {
-            let b = 'C ' + (curve.c[i * 3 + 0].x * size).toFixed(3) + ' ' +
-               (curve.c[i * 3 + 0].y * size).toFixed(3) + ',';
-            b += (curve.c[i * 3 + 1].x * size).toFixed(3) + ' ' +
-               (curve.c[i * 3 + 1].y * size).toFixed(3) + ',';
-            b += (curve.c[i * 3 + 2].x * size).toFixed(3) + ' ' +
-               (curve.c[i * 3 + 2].y * size).toFixed(3) + ' ';
-            return b;
-         }
-
-         function segment(i: number) {
-            let s = 'L ' + (curve.c[i * 3 + 1].x * size).toFixed(3) + ' ' +
-               (curve.c[i * 3 + 1].y * size).toFixed(3) + ' ';
-            s += (curve.c[i * 3 + 2].x * size).toFixed(3) + ' ' +
-               (curve.c[i * 3 + 2].y * size).toFixed(3) + ' ';
-            return s;
-         }
-
-         const n = curve.n;
-         var p = 'M' + (curve.c[(n - 1) * 3 + 2].x * size).toFixed(3) +
-            ' ' + (curve.c[(n - 1) * 3 + 2].y * size).toFixed(3) + ' ';
-         for (let i = 0; i < n; ++i) {
-            if (curve.tag[i] === 'CURVE') {
-               p += bezier(i);
-            } else if (curve.tag[i] === 'CORNER') {
-               p += segment(i);
+      public setParameter(obj: Parameters): void {
+         let key: string;
+         for (key in obj) {
+            if (obj.hasOwnProperty(key)) {
+               this.info[key] = obj[key];
             }
          }
-         //p +=
+      }
+
+      private path(curve: Curve, scale: number): string {
+         const n = curve.n;
+         var p = 'M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
+            ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ';
+         for (let i = 0; i < n; ++i) {
+            if (curve.tag[i] === 'CURVE') {
+               p += 'C ' + (curve.c[i * 3 + 0].x * scale).toFixed(3) + ' ' +
+                  (curve.c[i * 3 + 0].y * scale).toFixed(3) + ',';
+               p += (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
+                  (curve.c[i * 3 + 1].y * scale).toFixed(3) + ',';
+               p += (curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
+                  (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ';
+            } else if (curve.tag[i] === 'CORNER') {
+               p += 'L ' + (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
+                  (curve.c[i * 3 + 1].y * scale).toFixed(3) + ' ';
+               p += (curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
+                  (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ';
+            }
+         }
          return p;
       }
 
-      const w = bm.w * size, h = bm.h * size, len = pathlist.length;
+      public getSVG(scale: number, opt_type: string): string {
+         const bm = this.bm, pathlist = this.pathlist;
+         const w = bm.w * scale, h = bm.h * scale, len = pathlist.length;
 
-      let svg = '<svg id="svg" version="1.1" width="' + w + '" height="' + h +
-         '" xmlns="http://www.w3.org/2000/svg">';
-      svg += '<path d="';
-      for (let i = 0; i < len; ++i) {
-         svg += path(pathlist[i].curve);
+         let svg = '<svg id="svg" version="1.1" width="' + w + '" height="' + h +
+            '" xmlns="http://www.w3.org/2000/svg">';
+         svg += '<path d="';
+         for (let i = 0; i < len; ++i) {
+            svg += this.path(pathlist[i].curve, scale);
+         }
+         let strokec: string, fillc: string, fillrule: string;
+         if (opt_type === 'curve') {
+            strokec = 'black';
+            fillc = 'none';
+            fillrule = '';
+         } else {
+            strokec = 'none';
+            fillc = 'black';
+            fillrule = ' fill-rule="evenodd"';
+         }
+         svg += '" stroke="' + strokec + '" fill="' + fillc + '"' + fillrule + '/></svg>';
+         return svg;
       }
-      let strokec: string, fillc: string, fillrule: string;
-      if (opt_type === 'curve') {
-         strokec = 'black';
-         fillc = 'none';
-         fillrule = '';
-      } else {
-         strokec = 'none';
-         fillc = 'black';
-         fillrule = ' fill-rule="evenodd"';
-      }
-      svg += '" stroke="' + strokec + '" fill="' + fillc + '"' + fillrule + '/></svg>';
-      return svg;
    }
-
-   export let img = imgElement;
 }

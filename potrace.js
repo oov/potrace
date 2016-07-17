@@ -32,7 +32,7 @@
  *                                    optional parameter opt_type can be "curve"
  */
 var Potrace;
-(function (Potrace) {
+(function (Potrace_1) {
     var Point = (function () {
         function Point(x, y) {
             this.x = x;
@@ -127,35 +127,6 @@ var Potrace;
         }
         return Opti;
     }());
-    var imgElement = document.createElement('img'), imgCanvas = document.createElement('canvas'), bm = null, pathlist = [], callback = null, info = {
-        isReady: false,
-        turnpolicy: 'minority',
-        turdsize: 2,
-        optcurve: true,
-        alphamax: 1,
-        opttolerance: 0.2
-    };
-    imgElement.onload = function () {
-        loadCanvas();
-        loadBm();
-    };
-    function loadCanvas() {
-        imgCanvas.width = imgElement.width;
-        imgCanvas.height = imgElement.height;
-        imgCanvas.getContext('2d').drawImage(imgElement, 0, 0);
-    }
-    function loadBm() {
-        var ctx = imgCanvas.getContext('2d');
-        bm = new Bitmap(imgCanvas.width, imgCanvas.height);
-        var data = ctx.getImageData(0, 0, bm.w, bm.h).data;
-        var l = data.length;
-        for (var i = 0, j = 0, color = void 0; i < l; i += 4, ++j) {
-            color = 0.2126 * data[i] + 0.7153 * data[i + 1] +
-                0.0721 * data[i + 2];
-            bm.data[j] = (color < 128 ? 1 : 0);
-        }
-        info.isReady = true;
-    }
     function findNext(bm1, point) {
         var i = bm1.w * point.y + point.x;
         while (i < bm1.size && bm1.data[i] !== 1) {
@@ -181,7 +152,7 @@ var Potrace;
         }
         return 0;
     }
-    function findPath(bm1, point) {
+    function findPath(bm, infoTurnpolicy, bm1, point) {
         var path = new Path();
         var x = point.x, y = point.y, dirx = 0, diry = 1, tmp;
         path.sign = bm.at(x, y) ? '+' : '-';
@@ -209,11 +180,11 @@ var Potrace;
             var l = bm1.at(x + (dirx + diry - 1) / 2, y + (diry - dirx - 1) / 2);
             var r = bm1.at(x + (dirx - diry - 1) / 2, y + (diry + dirx - 1) / 2);
             if (r && !l) {
-                if (info.turnpolicy === 'right' ||
-                    (info.turnpolicy === 'black' && path.sign === '+') ||
-                    (info.turnpolicy === 'white' && path.sign === '-') ||
-                    (info.turnpolicy === 'majority' && majority(bm1, x, y)) ||
-                    (info.turnpolicy === 'minority' && !majority(bm1, x, y))) {
+                if (infoTurnpolicy === 'right' ||
+                    (infoTurnpolicy === 'black' && path.sign === '+') ||
+                    (infoTurnpolicy === 'white' && path.sign === '-') ||
+                    (infoTurnpolicy === 'majority' && majority(bm1, x, y)) ||
+                    (infoTurnpolicy === 'minority' && !majority(bm1, x, y))) {
                     tmp = dirx;
                     dirx = -diry;
                     diry = tmp;
@@ -250,16 +221,6 @@ var Potrace;
                     bm1.flip(j, minY);
                 }
                 y1 = y;
-            }
-        }
-    }
-    function bmToPathlist() {
-        var bm1 = bm.copy(), currentPoint = new Point(0, 0), path;
-        while (currentPoint = findNext(bm1, currentPoint)) {
-            path = findPath(bm1, currentPoint);
-            xorPath(bm1, path);
-            if (path.area > info.turdsize) {
-                pathlist.push(path);
             }
         }
     }
@@ -739,7 +700,7 @@ var Potrace;
             v[j] = tmp;
         }
     }
-    function smooth(path) {
+    function smooth(path, infoAlphamax) {
         var m = path.curve.n, curve = path.curve;
         for (var i = 0; i < m; ++i) {
             var j = mod(i + 1, m);
@@ -755,7 +716,7 @@ var Potrace;
                 alpha = 4 / 3.0;
             }
             curve.alpha0[j] = alpha;
-            if (alpha >= info.alphamax) {
+            if (alpha >= infoAlphamax) {
                 curve.tag[j] = 'CORNER';
                 curve.c[3 * j + 1] = curve.vertex[j];
                 curve.c[3 * j + 2] = p4;
@@ -884,7 +845,7 @@ var Potrace;
         }
         return false;
     }
-    function optiCurve(path) {
+    function optiCurve(path, infoOpttolerance) {
         var curve = path.curve, m = curve.n, vert = curve.vertex, pt = new Array(m + 1), pen = new Array(m + 1), len = new Array(m + 1), opt = new Array(m + 1);
         var convc = new Array(m), areac = new Array(m + 1);
         for (var i = 0; i < m; ++i) {
@@ -917,7 +878,7 @@ var Potrace;
             pen[j] = pen[j - 1];
             len[j] = len[j - 1] + 1;
             for (var i = j - 2; i >= 0; --i) {
-                var r = opti_penalty(path, i, mod(j, m), o, info.opttolerance, convc, areac);
+                var r = opti_penalty(path, i, mod(j, m), o, infoOpttolerance, convc, areac);
                 if (r) {
                     break;
                 }
@@ -966,122 +927,129 @@ var Potrace;
         ocurve.alphaCurve = 1;
         path.curve = ocurve;
     }
-    function processPath() {
-        for (var i = 0; i < pathlist.length; ++i) {
-            var path = pathlist[i];
-            calcSums(path);
-            calcLon(path);
-            bestPolygon(path);
-            adjustVertices(path);
-            if (path.sign === '-') {
-                reverse(path);
-            }
-            smooth(path);
-            if (info.optcurve) {
-                optiCurve(path);
-            }
-        }
-    }
-    function clear() {
-        bm = null;
-        pathlist = [];
-        callback = null;
-        info.isReady = false;
-    }
     // --------
-    function loadImageFromFile(file) {
-        if (info.isReady) {
-            clear();
+    var Potrace = (function () {
+        function Potrace() {
+            var _this = this;
+            this.pathlist = [];
+            this.img = new Image();
+            this.info = {
+                turnpolicy: 'minority',
+                turdsize: 2,
+                optcurve: true,
+                alphamax: 1,
+                opttolerance: 0.2
+            };
+            this.complete = null;
+            var img = this.img;
+            img.onload = function () {
+                var canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+                _this.bm = new Bitmap(canvas.width, canvas.height);
+                var bm = _this.bm;
+                var data = canvas.getContext('2d').getImageData(0, 0, bm.w, bm.h).data;
+                var l = data.length;
+                for (var i = 0, j = 0, color = void 0; i < l; i += 4, ++j) {
+                    color = 0.2126 * data[i] + 0.7153 * data[i + 1] +
+                        0.0721 * data[i + 2];
+                    bm.data[j] = (color < 128 ? 1 : 0);
+                }
+                // bitmap to pathlist
+                var pathlist = _this.pathlist;
+                var bm1 = bm.copy();
+                var currentPoint = new Point(0, 0);
+                while (currentPoint = findNext(bm1, currentPoint)) {
+                    var path = findPath(bm, _this.info.turnpolicy, bm1, currentPoint);
+                    xorPath(bm1, path);
+                    if (path.area > _this.info.turdsize) {
+                        pathlist.push(path);
+                    }
+                }
+                // process path
+                for (var i = 0; i < pathlist.length; ++i) {
+                    var path = pathlist[i];
+                    calcSums(path);
+                    calcLon(path);
+                    bestPolygon(path);
+                    adjustVertices(path);
+                    if (path.sign === '-') {
+                        reverse(path);
+                    }
+                    smooth(path, _this.info.alphamax);
+                    if (_this.info.optcurve) {
+                        optiCurve(path, _this.info.opttolerance);
+                    }
+                }
+                if (_this.complete) {
+                    _this.complete(_this);
+                }
+            };
         }
-        var reader = new FileReader();
-        var imgE = imgElement;
-        reader.onload = function (e) { return imgE.src = reader.result; };
-        reader.readAsDataURL(file);
-    }
-    Potrace.loadImageFromFile = loadImageFromFile;
-    function loadImageFromUrl(url) {
-        if (info.isReady) {
-            clear();
-        }
-        imgElement.src = url;
-    }
-    Potrace.loadImageFromUrl = loadImageFromUrl;
-    function setParameter(obj) {
-        var key;
-        for (key in obj) {
-            if (obj.hasOwnProperty(key)) {
-                info[key] = obj[key];
+        Potrace.prototype.loadFromFile = function (file) {
+            var _this = this;
+            var fr = new FileReader();
+            fr.onload = function (e) { return _this.img.src = fr.result; };
+            fr.readAsDataURL(file);
+        };
+        Potrace.prototype.loadFromURL = function (url) {
+            this.img.src = url;
+        };
+        Potrace.prototype.setParameter = function (obj) {
+            var key;
+            for (key in obj) {
+                if (obj.hasOwnProperty(key)) {
+                    this.info[key] = obj[key];
+                }
             }
-        }
-    }
-    Potrace.setParameter = setParameter;
-    function process(c) {
-        if (c) {
-            callback = c;
-        }
-        if (!info.isReady) {
-            setTimeout(process, 100);
-            return;
-        }
-        bmToPathlist();
-        processPath();
-        callback();
-        callback = null;
-    }
-    Potrace.process = process;
-    function getSVG(size, opt_type) {
-        function path(curve) {
-            function bezier(i) {
-                var b = 'C ' + (curve.c[i * 3 + 0].x * size).toFixed(3) + ' ' +
-                    (curve.c[i * 3 + 0].y * size).toFixed(3) + ',';
-                b += (curve.c[i * 3 + 1].x * size).toFixed(3) + ' ' +
-                    (curve.c[i * 3 + 1].y * size).toFixed(3) + ',';
-                b += (curve.c[i * 3 + 2].x * size).toFixed(3) + ' ' +
-                    (curve.c[i * 3 + 2].y * size).toFixed(3) + ' ';
-                return b;
-            }
-            function segment(i) {
-                var s = 'L ' + (curve.c[i * 3 + 1].x * size).toFixed(3) + ' ' +
-                    (curve.c[i * 3 + 1].y * size).toFixed(3) + ' ';
-                s += (curve.c[i * 3 + 2].x * size).toFixed(3) + ' ' +
-                    (curve.c[i * 3 + 2].y * size).toFixed(3) + ' ';
-                return s;
-            }
+        };
+        Potrace.prototype.path = function (curve, scale) {
             var n = curve.n;
-            var p = 'M' + (curve.c[(n - 1) * 3 + 2].x * size).toFixed(3) +
-                ' ' + (curve.c[(n - 1) * 3 + 2].y * size).toFixed(3) + ' ';
+            var p = 'M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
+                ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ';
             for (var i = 0; i < n; ++i) {
                 if (curve.tag[i] === 'CURVE') {
-                    p += bezier(i);
+                    p += 'C ' + (curve.c[i * 3 + 0].x * scale).toFixed(3) + ' ' +
+                        (curve.c[i * 3 + 0].y * scale).toFixed(3) + ',';
+                    p += (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
+                        (curve.c[i * 3 + 1].y * scale).toFixed(3) + ',';
+                    p += (curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
+                        (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ';
                 }
                 else if (curve.tag[i] === 'CORNER') {
-                    p += segment(i);
+                    p += 'L ' + (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
+                        (curve.c[i * 3 + 1].y * scale).toFixed(3) + ' ';
+                    p += (curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
+                        (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ';
                 }
             }
-            //p +=
             return p;
-        }
-        var w = bm.w * size, h = bm.h * size, len = pathlist.length;
-        var svg = '<svg id="svg" version="1.1" width="' + w + '" height="' + h +
-            '" xmlns="http://www.w3.org/2000/svg">';
-        svg += '<path d="';
-        for (var i = 0; i < len; ++i) {
-            svg += path(pathlist[i].curve);
-        }
-        var strokec, fillc, fillrule;
-        if (opt_type === 'curve') {
-            strokec = 'black';
-            fillc = 'none';
-            fillrule = '';
-        }
-        else {
-            strokec = 'none';
-            fillc = 'black';
-            fillrule = ' fill-rule="evenodd"';
-        }
-        svg += '" stroke="' + strokec + '" fill="' + fillc + '"' + fillrule + '/></svg>';
-        return svg;
-    }
-    Potrace.getSVG = getSVG;
-    Potrace.img = imgElement;
+        };
+        Potrace.prototype.getSVG = function (scale, opt_type) {
+            var bm = this.bm, pathlist = this.pathlist;
+            var w = bm.w * scale, h = bm.h * scale, len = pathlist.length;
+            var svg = '<svg id="svg" version="1.1" width="' + w + '" height="' + h +
+                '" xmlns="http://www.w3.org/2000/svg">';
+            svg += '<path d="';
+            for (var i = 0; i < len; ++i) {
+                svg += this.path(pathlist[i].curve, scale);
+            }
+            var strokec, fillc, fillrule;
+            if (opt_type === 'curve') {
+                strokec = 'black';
+                fillc = 'none';
+                fillrule = '';
+            }
+            else {
+                strokec = 'none';
+                fillc = 'black';
+                fillrule = ' fill-rule="evenodd"';
+            }
+            svg += '" stroke="' + strokec + '" fill="' + fillc + '"' + fillrule + '/></svg>';
+            return svg;
+        };
+        return Potrace;
+    }());
+    Potrace_1.Potrace = Potrace;
 })(Potrace || (Potrace = {}));

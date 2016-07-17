@@ -31,6 +31,11 @@
  *                                    result_image_size = original_image_size * size
  *                                    optional parameter opt_type can be "curve"
  */
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+};
 var Potrace;
 (function (Potrace_1) {
     var Point = (function () {
@@ -151,6 +156,49 @@ var Potrace;
         }
         return Opti;
     }());
+    var PathList = (function (_super) {
+        __extends(PathList, _super);
+        function PathList(width, height) {
+            _super.call(this);
+            this.width = width;
+            this.height = height;
+        }
+        PathList.prototype.toSVG = function (scale, optType) {
+            var w = this.width * scale, h = this.height * scale;
+            var svg = [("<svg id=\"svg\" version=\"1.1\" width=\"" + w + "\" height=\"" + h + "\" xmlns=\"http://www.w3.org/2000/svg\">")];
+            svg.push('<path d="');
+            for (var i = 0, len = this.length; i < len; ++i) {
+                var curve = this[i].curve, n = curve.n;
+                svg.push('M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
+                    ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ');
+                for (var i_1 = 0; i_1 < n; ++i_1) {
+                    if (curve.tag[i_1] === 'CURVE') {
+                        svg.push('C ' + (curve.c[i_1 * 3 + 0].x * scale).toFixed(3) + ' ' +
+                            (curve.c[i_1 * 3 + 0].y * scale).toFixed(3) + ',');
+                        svg.push((curve.c[i_1 * 3 + 1].x * scale).toFixed(3) + ' ' +
+                            (curve.c[i_1 * 3 + 1].y * scale).toFixed(3) + ',');
+                        svg.push((curve.c[i_1 * 3 + 2].x * scale).toFixed(3) + ' ' +
+                            (curve.c[i_1 * 3 + 2].y * scale).toFixed(3) + ' ');
+                    }
+                    else if (curve.tag[i_1] === 'CORNER') {
+                        svg.push('L ' + (curve.c[i_1 * 3 + 1].x * scale).toFixed(3) + ' ' +
+                            (curve.c[i_1 * 3 + 1].y * scale).toFixed(3) + ' ');
+                        svg.push((curve.c[i_1 * 3 + 2].x * scale).toFixed(3) + ' ' +
+                            (curve.c[i_1 * 3 + 2].y * scale).toFixed(3) + ' ');
+                    }
+                }
+            }
+            if (optType === 'curve') {
+                svg.push('" stroke="black" fill="none"/>');
+            }
+            else {
+                svg.push('" stroke="none" fill="black" fill-rule="evenodd"/>');
+            }
+            svg.push('</svg>');
+            return svg.join('');
+        };
+        return PathList;
+    }(Array));
     function majority(bm1, x, y) {
         for (var i = 2; i < 5; i++) {
             var ct = 0;
@@ -483,28 +531,28 @@ var Potrace;
         var clip1 = new Array(n + 1);
         var seg0 = new Array(n + 1);
         var seg1 = new Array(n + 1);
-        for (var i_1 = 0; i_1 < n; i_1++) {
-            var c = mod(path.lon[mod(i_1 - 1, n)] - 1, n);
-            if (c === i_1) {
-                c = mod(i_1 + 1, n);
+        for (var i_2 = 0; i_2 < n; i_2++) {
+            var c = mod(path.lon[mod(i_2 - 1, n)] - 1, n);
+            if (c === i_2) {
+                c = mod(i_2 + 1, n);
             }
-            if (c < i_1) {
-                clip0[i_1] = n;
+            if (c < i_2) {
+                clip0[i_2] = n;
             }
             else {
-                clip0[i_1] = c;
+                clip0[i_2] = c;
             }
         }
-        for (var i_2 = 0, j_2 = 1; i_2 < n; i_2++) {
-            while (j_2 <= clip0[i_2]) {
-                clip1[j_2] = i_2;
+        for (var i_3 = 0, j_2 = 1; i_3 < n; i_3++) {
+            while (j_2 <= clip0[i_3]) {
+                clip1[j_2] = i_3;
                 j_2++;
             }
         }
         var j = 0;
-        for (var i_3 = 0; i_3 < n; j++) {
-            seg0[j] = i_3;
-            i_3 = clip0[i_3];
+        for (var i_4 = 0; i_4 < n; j++) {
+            seg0[j] = i_4;
+            i_4 = clip0[i_4];
         }
         seg0[j] = n;
         var m = j;
@@ -516,23 +564,23 @@ var Potrace;
         seg1[0] = 0;
         pen[0] = 0;
         for (var j_4 = 1; j_4 <= m; j_4++) {
-            for (var i_4 = seg1[j_4]; i_4 <= seg0[j_4]; i_4++) {
+            for (var i_5 = seg1[j_4]; i_5 <= seg0[j_4]; i_5++) {
                 var best = -1;
-                for (var k = seg0[j_4 - 1]; k >= clip1[i_4]; k--) {
-                    var thispen = penalty3(path, k, i_4) + pen[k];
+                for (var k = seg0[j_4 - 1]; k >= clip1[i_5]; k--) {
+                    var thispen = penalty3(path, k, i_5) + pen[k];
                     if (best < 0 || thispen < best) {
-                        prev[i_4] = k;
+                        prev[i_5] = k;
                         best = thispen;
                     }
                 }
-                pen[i_4] = best;
+                pen[i_5] = best;
             }
         }
         path.m = m;
         path.po = new Array(m);
-        for (var i_5 = n, j_5 = m - 1; i_5 > 0; j_5--) {
-            i_5 = prev[i_5];
-            path.po[j_5] = i_5;
+        for (var i_6 = n, j_5 = m - 1; i_6 > 0; j_5--) {
+            i_6 = prev[i_6];
+            path.po[j_5] = i_6;
         }
     }
     function pointslope(path, i, j, ctr, dir) {
@@ -945,40 +993,6 @@ var Potrace;
         path.curve = ocurve;
     }
     // --------
-    function convertSVG(width, height, pathlist, scale, opt_type) {
-        var w = width * scale, h = height * scale;
-        var svg = [("<svg id=\"svg\" version=\"1.1\" width=\"" + w + "\" height=\"" + h + "\" xmlns=\"http://www.w3.org/2000/svg\">")];
-        svg.push('<path d="');
-        for (var i = 0, len = pathlist.length; i < len; ++i) {
-            var curve = pathlist[i].curve, n = curve.n;
-            svg.push('M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
-                ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ');
-            for (var i_6 = 0; i_6 < n; ++i_6) {
-                if (curve.tag[i_6] === 'CURVE') {
-                    svg.push('C ' + (curve.c[i_6 * 3 + 0].x * scale).toFixed(3) + ' ' +
-                        (curve.c[i_6 * 3 + 0].y * scale).toFixed(3) + ',');
-                    svg.push((curve.c[i_6 * 3 + 1].x * scale).toFixed(3) + ' ' +
-                        (curve.c[i_6 * 3 + 1].y * scale).toFixed(3) + ',');
-                    svg.push((curve.c[i_6 * 3 + 2].x * scale).toFixed(3) + ' ' +
-                        (curve.c[i_6 * 3 + 2].y * scale).toFixed(3) + ' ');
-                }
-                else if (curve.tag[i_6] === 'CORNER') {
-                    svg.push('L ' + (curve.c[i_6 * 3 + 1].x * scale).toFixed(3) + ' ' +
-                        (curve.c[i_6 * 3 + 1].y * scale).toFixed(3) + ' ');
-                    svg.push((curve.c[i_6 * 3 + 2].x * scale).toFixed(3) + ' ' +
-                        (curve.c[i_6 * 3 + 2].y * scale).toFixed(3) + ' ');
-                }
-            }
-        }
-        if (opt_type === 'curve') {
-            svg.push('" stroke="black" fill="none"/>');
-        }
-        else {
-            svg.push('" stroke="none" fill="black" fill-rule="evenodd"/>');
-        }
-        svg.push('</svg>');
-        return svg.join('');
-    }
     function fromImage(src) {
         return new Potrace(Bitmap.createFromImage(src));
     }
@@ -989,16 +1003,14 @@ var Potrace;
     Potrace_1.fromFunction = fromFunction;
     var Potrace = (function () {
         function Potrace(bm) {
-            this.pathlist = [];
             this.turnPolicy = 'minority';
             this.turdSize = 2;
             this.optCurve = true;
             this.alphaMax = 1;
             this.optTolerance = 0.2;
-            this.width = bm.width;
-            this.height = bm.height;
             // bitmap to pathlist
-            var pathlist = this.pathlist;
+            var pathlist = new PathList(bm.width, bm.height);
+            this.pathlist = pathlist;
             var bm1 = bm.copy();
             var currentPoint = new Point(0, 0);
             while (currentPoint = bm1.findNext(currentPoint)) {
@@ -1025,7 +1037,7 @@ var Potrace;
             }
         }
         Potrace.prototype.getSVG = function (scale, optType) {
-            return convertSVG(this.width, this.height, this.pathlist, scale, optType);
+            return this.pathlist.toSVG(scale, optType);
         };
         return Potrace;
     }());

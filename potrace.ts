@@ -154,6 +154,46 @@ module Potrace {
       public alpha = 0;
    }
 
+   class PathList extends Array<Path> {
+      constructor(public width: number, public height: number) {
+         super();
+      }
+
+      public toSVG(scale: number, optType: string): string {
+         const w = this.width * scale, h = this.height * scale;
+         let svg = [`<svg id="svg" version="1.1" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">`];
+
+         svg.push('<path d="');
+         for (let i = 0, len = this.length; i < len; ++i) {
+            const curve = this[i].curve, n = curve.n;
+            svg.push('M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
+               ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ');
+            for (let i = 0; i < n; ++i) {
+               if (curve.tag[i] === 'CURVE') {
+                  svg.push('C ' + (curve.c[i * 3 + 0].x * scale).toFixed(3) + ' ' +
+                     (curve.c[i * 3 + 0].y * scale).toFixed(3) + ',');
+                  svg.push((curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
+                     (curve.c[i * 3 + 1].y * scale).toFixed(3) + ',');
+                  svg.push((curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
+                     (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ');
+               } else if (curve.tag[i] === 'CORNER') {
+                  svg.push('L ' + (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
+                     (curve.c[i * 3 + 1].y * scale).toFixed(3) + ' ');
+                  svg.push((curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
+                     (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ');
+               }
+            }
+         }
+         if (optType === 'curve') {
+            svg.push('" stroke="black" fill="none"/>');
+         } else {
+            svg.push('" stroke="none" fill="black" fill-rule="evenodd"/>');
+         }
+         svg.push('</svg>');
+         return svg.join('');
+      }
+   }
+
    function majority(bm1: Bitmap, x: number, y: number): number {
       for (let i = 2; i < 5; i++) {
          let ct = 0;
@@ -1058,40 +1098,6 @@ module Potrace {
 
    // --------
 
-   function convertSVG(width: number, height: number, pathlist: Path[], scale: number, opt_type: string): string {
-      const w = width * scale, h = height * scale;
-      let svg = [`<svg id="svg" version="1.1" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">`];
-
-      svg.push('<path d="');
-      for (let i = 0, len = pathlist.length; i < len; ++i) {
-         const curve = pathlist[i].curve, n = curve.n;
-         svg.push('M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
-            ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ');
-         for (let i = 0; i < n; ++i) {
-            if (curve.tag[i] === 'CURVE') {
-               svg.push('C ' + (curve.c[i * 3 + 0].x * scale).toFixed(3) + ' ' +
-                  (curve.c[i * 3 + 0].y * scale).toFixed(3) + ',');
-               svg.push((curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
-                  (curve.c[i * 3 + 1].y * scale).toFixed(3) + ',');
-               svg.push((curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
-                  (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ');
-            } else if (curve.tag[i] === 'CORNER') {
-               svg.push('L ' + (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
-                  (curve.c[i * 3 + 1].y * scale).toFixed(3) + ' ');
-               svg.push((curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
-                  (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ');
-            }
-         }
-      }
-      if (opt_type === 'curve') {
-         svg.push('" stroke="black" fill="none"/>');
-      } else {
-         svg.push('" stroke="none" fill="black" fill-rule="evenodd"/>');
-      }
-      svg.push('</svg>');
-      return svg.join('');
-   }
-
    export function fromImage(src: HTMLImageElement | HTMLCanvasElement): Potrace {
       return new Potrace(Bitmap.createFromImage(src));
    }
@@ -1101,10 +1107,7 @@ module Potrace {
    }
 
    class Potrace {
-      private pathlist: Path[] = [];
-
-      private width: number;
-      private height: number;
+      private pathlist: PathList;
 
       public turnPolicy = 'minority';
       public turdSize = 2;
@@ -1113,11 +1116,9 @@ module Potrace {
       public optTolerance = 0.2;
 
       constructor(bm: Bitmap) {
-         this.width = bm.width;
-         this.height = bm.height;
-
          // bitmap to pathlist
-         const pathlist = this.pathlist;
+         const pathlist = new PathList(bm.width, bm.height);
+         this.pathlist = pathlist;
          const bm1 = bm.copy();
          let currentPoint = new Point(0, 0);
          while (currentPoint = bm1.findNext(currentPoint)) {
@@ -1149,7 +1150,7 @@ module Potrace {
       }
 
       public getSVG(scale: number, optType: string): string {
-         return convertSVG(this.width, this.height, this.pathlist, scale, optType);
+         return this.pathlist.toSVG(scale, optType);
       }
    }
 }

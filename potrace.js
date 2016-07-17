@@ -48,8 +48,7 @@ var Potrace;
             this.w = w;
             this.h = h;
             this.size = w * h;
-            this.arraybuffer = new ArrayBuffer(this.size);
-            this.data = new Int8Array(this.arraybuffer);
+            this.data = new Int8Array(this.size);
         }
         Bitmap.prototype.at = function (x, y) {
             return (x >= 0 && x < this.w && y >= 0 && y < this.h) &&

@@ -42,12 +42,10 @@ module Potrace {
 
    class Bitmap {
       public size: number;
-      public arraybuffer: ArrayBuffer;
       public data: Int8Array;
       constructor(public w: number, public h: number) {
          this.size = w * h;
-         this.arraybuffer = new ArrayBuffer(this.size);
-         this.data = new Int8Array(this.arraybuffer);
+         this.data = new Int8Array(this.size);
       }
       public at(x: number, y: number): boolean {
          return (x >= 0 && x < this.w && y >= 0 && y < this.h) &&

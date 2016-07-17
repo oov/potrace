@@ -101,10 +101,13 @@ module Potrace {
       public signIsPlus = true;
 
       public optimize(alphaMax: number, optCurve: boolean, optTolerance: number): void {
-         this.curve = new CurveBuilder(this).do();
-         smooth(this, alphaMax);
+         const curve = new CurveBuilder(this).do();
+         const opt = new CurveOptimizer(curve);
+         opt.smooth(alphaMax);
          if (optCurve) {
-            optiCurve(this, optTolerance);
+            this.curve = opt.optimize(optTolerance);
+         } else {
+            this.curve = curve;
          }
       }
    }
@@ -556,18 +559,11 @@ module Potrace {
    class Curve {
       public tag: CurveTag[];
       public c: Point[];
-      public alphaCurve = 0;
       public vertex: Point[];
-      public alpha: number[];
-      public alpha0: number[];
-      public beta: number[];
       constructor(public n: number) {
          this.tag = new Array(n);
          this.c = new Array(n * 3);
          this.vertex = new Array(n);
-         this.alpha = new Array(n);
-         this.alpha0 = new Array(n);
-         this.beta = new Array(n);
       }
 
       public reverse(): void {
@@ -577,6 +573,275 @@ module Potrace {
             v[i] = v[j];
             v[j] = tmp;
          }
+      }
+   }
+
+   class CurveOptimizer {
+      private alphaCurve = 0;
+      private alpha: number[];
+      private alpha0: number[];
+      private beta: number[];
+      constructor(private curve: Curve) {
+         const n = curve.n;
+         this.alpha = new Array(n);
+         this.alpha0 = new Array(n);
+         this.beta = new Array(n);
+      }
+
+      public smooth(alphaMax: number): void {
+         const curve = this.curve;
+         const vertex = curve.vertex;
+         const m = curve.n;
+         for (let i = 0; i < m; ++i) {
+            const j = mod(i + 1, m);
+            const k = mod(i + 2, m);
+            const p4 = interval(1 / 2.0, vertex[k], vertex[j]);
+
+            const denom = ddenom(vertex[i], vertex[k]);
+            let alpha: number;
+            if (denom !== 0.0) {
+               const dd = Math.abs(dpara(vertex[i], vertex[j], vertex[k]) / denom);
+               alpha = (dd > 1 ? (1 - 1.0 / dd) : 0) / 0.75;
+            } else {
+               alpha = 4 / 3.0;
+            }
+            this.alpha0[j] = alpha;
+
+            if (alpha >= alphaMax) {
+               curve.tag[j] = CurveTag.Corner;
+               curve.c[3 * j + 1] = vertex[j];
+               curve.c[3 * j + 2] = p4;
+            } else {
+               if (alpha < 0.55) {
+                  alpha = 0.55;
+               } else if (alpha > 1) {
+                  alpha = 1;
+               }
+               curve.tag[j] = CurveTag.Curve;
+               curve.c[3 * j + 0] = interval(0.5 + 0.5 * alpha, vertex[i], vertex[j]);
+               curve.c[3 * j + 1] = interval(0.5 + 0.5 * alpha, vertex[k], vertex[j]);
+               curve.c[3 * j + 2] = p4;
+            }
+            this.alpha[j] = alpha;
+            this.beta[j] = 0.5;
+         }
+         this.alphaCurve = 1;
+      }
+
+      public optimize(optTolerance: number): Curve {
+         const curve = this.curve;
+         const m = curve.n, vert = curve.vertex,
+            pt = new Array(m + 1),
+            pen = new Array(m + 1),
+            len = new Array(m + 1),
+            opt = new Array(m + 1);
+
+         const convc = new Array(m), areac = new Array(m + 1);
+
+         for (let i = 0; i < m; ++i) {
+            if (curve.tag[i] === CurveTag.Curve) {
+               convc[i] = sign(dpara(vert[mod(i - 1, m)], vert[i], vert[mod(i + 1, m)]));
+            } else {
+               convc[i] = 0;
+            }
+         }
+
+         let area = 0.0;
+         areac[0] = 0.0;
+         const p0 = curve.vertex[0];
+         for (let i = 0; i < m; ++i) {
+            const i1 = mod(i + 1, m);
+            if (curve.tag[i1] === CurveTag.Curve) {
+               const alpha = this.alpha[i1];
+               area += 0.3 * alpha * (4 - alpha) *
+                  dpara(curve.c[i * 3 + 2], vert[i1], curve.c[i1 * 3 + 2]) / 2;
+               area += dpara(p0, curve.c[i * 3 + 2], curve.c[i1 * 3 + 2]) / 2;
+            }
+            areac[i + 1] = area;
+         }
+
+         pt[0] = -1;
+         pen[0] = 0;
+         len[0] = 0;
+
+         let o = new Opti();
+         for (let j = 1; j <= m; ++j) {
+            pt[j] = j - 1;
+            pen[j] = pen[j - 1];
+            len[j] = len[j - 1] + 1;
+
+            for (let i = j - 2; i >= 0; --i) {
+               const r = this.optiPenalty(i, mod(j, m), o, optTolerance, convc, areac);
+               if (r) {
+                  break;
+               }
+               if (len[j] > len[i] + 1 ||
+                  (len[j] === len[i] + 1 && pen[j] > pen[i] + o.pen)) {
+                  pt[j] = i;
+                  pen[j] = pen[i] + o.pen;
+                  len[j] = len[i] + 1;
+                  opt[j] = o;
+                  o = new Opti();
+               }
+            }
+         }
+         const om = len[m];
+         const ocurve = new Curve(om);
+         const s = new Array(om);
+         const t = new Array(om);
+
+         for (let i = om - 1, j = m; i >= 0; --i) {
+            if (pt[j] === j - 1) {
+               ocurve.tag[i] = curve.tag[mod(j, m)];
+               ocurve.c[i * 3 + 0] = curve.c[mod(j, m) * 3 + 0];
+               ocurve.c[i * 3 + 1] = curve.c[mod(j, m) * 3 + 1];
+               ocurve.c[i * 3 + 2] = curve.c[mod(j, m) * 3 + 2];
+               ocurve.vertex[i] = curve.vertex[mod(j, m)];
+               // ocurve.alpha[i] = this.alpha[mod(j, m)];
+               // ocurve.alpha0[i] = this.alpha0[mod(j, m)];
+               // ocurve.beta[i] = this.beta[mod(j, m)];
+               s[i] = t[i] = 1.0;
+            } else {
+               ocurve.tag[i] = CurveTag.Curve;
+               ocurve.c[i * 3 + 0] = opt[j].c[0];
+               ocurve.c[i * 3 + 1] = opt[j].c[1];
+               ocurve.c[i * 3 + 2] = curve.c[mod(j, m) * 3 + 2];
+               ocurve.vertex[i] = interval(opt[j].s, curve.c[mod(j, m) * 3 + 2], vert[mod(j, m)]);
+               // ocurve.alpha[i] = opt[j].alpha;
+               // ocurve.alpha0[i] = opt[j].alpha;
+               s[i] = opt[j].s;
+               t[i] = opt[j].t;
+            }
+            j = pt[j];
+         }
+
+         // for (let i = 0; i < om; ++i) {
+         //    ocurve.beta[i] = s[i] / (s[i] + t[mod(i + 1, om)]);
+         // }
+         // ocurve.alphaCurve = 1;
+         return ocurve;
+      }
+
+      private optiPenalty(i: number, j: number, res: Opti,
+         optTolerance: number, convc: number[], areac: number[]): boolean {
+         const curve = this.curve;
+         const m = curve.n, vertex = curve.vertex;
+
+         if (i === j) {
+            return true;
+         }
+
+         const k = i;
+         const i1 = mod(i + 1, m);
+         let k1 = mod(k + 1, m);
+         const conv = convc[k1];
+         if (conv === 0) {
+            return true;
+         }
+         const d = ddist(vertex[i], vertex[i1]);
+         for (let k = k1; k !== j; k = k1) {
+            k1 = mod(k + 1, m);
+            const k2 = mod(k + 2, m);
+            if (convc[k1] !== conv) {
+               return true;
+            }
+            if (sign(cprod(vertex[i], vertex[i1], vertex[k1], vertex[k2])) !== conv) {
+               return true;
+            }
+            if (iprod1(vertex[i], vertex[i1], vertex[k1], vertex[k2]) <
+               d * ddist(vertex[k1], vertex[k2]) * -0.999847695156) {
+               return true;
+            }
+         }
+
+         const p0 = curve.c[mod(i, m) * 3 + 2].copy();
+         let p1 = vertex[mod(i + 1, m)].copy();
+         let p2 = vertex[mod(j, m)].copy();
+         const p3 = curve.c[mod(j, m) * 3 + 2].copy();
+
+         let area = areac[j] - areac[i];
+         area -= dpara(vertex[0], curve.c[i * 3 + 2], curve.c[j * 3 + 2]) / 2;
+         if (i >= j) {
+            area += areac[m];
+         }
+
+         const A1 = dpara(p0, p1, p2);
+         const A2 = dpara(p0, p1, p3);
+         const A3 = dpara(p0, p2, p3);
+         if (A2 === A1) {
+            return true;
+         }
+
+         const A4 = A1 + A3 - A2;
+         const t = A3 / (A3 - A4);
+         const s = A2 / (A2 - A1);
+         const A = A2 * t / 2.0;
+         if (A === 0.0) {
+            return true;
+         }
+
+         const R = area / A;
+         const alpha = 2 - Math.sqrt(4 - R / 0.3);
+         res.c[0] = interval(t * alpha, p0, p1);
+         res.c[1] = interval(s * alpha, p3, p2);
+         res.alpha = alpha;
+         res.t = t;
+         res.s = s;
+
+         p1 = res.c[0].copy();
+         p2 = res.c[1].copy();
+
+         res.pen = 0;
+
+         for (let k = mod(i + 1, m), k1: number; k !== j; k = k1) {
+            k1 = mod(k + 1, m);
+            const t = tangent(p0, p1, p2, p3, vertex[k], vertex[k1]);
+            if (t < -0.5) {
+               return true;
+            }
+            const pt = bezier(t, p0, p1, p2, p3);
+            const d = ddist(vertex[k], vertex[k1]);
+            if (d === 0.0) {
+               return true;
+            }
+            const d1 = dpara(vertex[k], vertex[k1], pt) / d;
+            if (Math.abs(d1) > optTolerance) {
+               return true;
+            }
+            if (iprod(vertex[k], vertex[k1], pt) < 0 ||
+               iprod(vertex[k1], vertex[k], pt) < 0) {
+               return true;
+            }
+            res.pen += d1 * d1;
+         }
+
+         for (let k = i, k1: number; k !== j; k = k1) {
+            k1 = mod(k + 1, m);
+            const t = tangent(p0, p1, p2, p3, curve.c[k * 3 + 2], curve.c[k1 * 3 + 2]);
+            if (t < -0.5) {
+               return true;
+            }
+            const pt = bezier(t, p0, p1, p2, p3);
+            const d = ddist(curve.c[k * 3 + 2], curve.c[k1 * 3 + 2]);
+            if (d === 0.0) {
+               return true;
+            }
+            let d1 = dpara(curve.c[k * 3 + 2], curve.c[k1 * 3 + 2], pt) / d;
+            let d2 = dpara(curve.c[k * 3 + 2], curve.c[k1 * 3 + 2], vertex[k1]) / d;
+            d2 *= 0.75 * this.alpha[k1];
+            if (d2 < 0) {
+               d1 = -d1;
+               d2 = -d2;
+            }
+            if (d1 < d2 - optTolerance) {
+               return true;
+            }
+            if (d1 < d2) {
+               res.pen += (d1 - d2) * (d1 - d2);
+            }
+         }
+
+         return false;
       }
    }
 
@@ -911,259 +1176,6 @@ module Potrace {
       } else {
          return -1.0;
       }
-   }
-
-   function smooth(path: Path, alphaMax: number): void {
-      const m = path.curve.n, curve = path.curve;
-      for (let i = 0; i < m; ++i) {
-         const j = mod(i + 1, m);
-         const k = mod(i + 2, m);
-         const p4 = interval(1 / 2.0, curve.vertex[k], curve.vertex[j]);
-
-         const denom = ddenom(curve.vertex[i], curve.vertex[k]);
-         let alpha: number;
-         if (denom !== 0.0) {
-            const dd = Math.abs(dpara(curve.vertex[i], curve.vertex[j], curve.vertex[k]) / denom);
-            alpha = (dd > 1 ? (1 - 1.0 / dd) : 0) / 0.75;
-         } else {
-            alpha = 4 / 3.0;
-         }
-         curve.alpha0[j] = alpha;
-
-         if (alpha >= alphaMax) {
-            curve.tag[j] = CurveTag.Corner;
-            curve.c[3 * j + 1] = curve.vertex[j];
-            curve.c[3 * j + 2] = p4;
-         } else {
-            if (alpha < 0.55) {
-               alpha = 0.55;
-            } else if (alpha > 1) {
-               alpha = 1;
-            }
-            curve.tag[j] = CurveTag.Curve;
-            curve.c[3 * j + 0] = interval(0.5 + 0.5 * alpha, curve.vertex[i], curve.vertex[j]);
-            curve.c[3 * j + 1] = interval(0.5 + 0.5 * alpha, curve.vertex[k], curve.vertex[j]);
-            curve.c[3 * j + 2] = p4;
-         }
-         curve.alpha[j] = alpha;
-         curve.beta[j] = 0.5;
-      }
-      curve.alphaCurve = 1;
-   }
-
-   function opti_penalty(path: Path, i: number, j: number, res: Opti,
-      optTolerance: number, convc: number[], areac: number[]): boolean {
-      const m = path.curve.n, curve = path.curve, vertex = curve.vertex;
-
-      if (i === j) {
-         return true;
-      }
-
-      const k = i;
-      const i1 = mod(i + 1, m);
-      let k1 = mod(k + 1, m);
-      const conv = convc[k1];
-      if (conv === 0) {
-         return true;
-      }
-      const d = ddist(vertex[i], vertex[i1]);
-      for (let k = k1; k !== j; k = k1) {
-         k1 = mod(k + 1, m);
-         const k2 = mod(k + 2, m);
-         if (convc[k1] !== conv) {
-            return true;
-         }
-         if (sign(cprod(vertex[i], vertex[i1], vertex[k1], vertex[k2])) !== conv) {
-            return true;
-         }
-         if (iprod1(vertex[i], vertex[i1], vertex[k1], vertex[k2]) <
-            d * ddist(vertex[k1], vertex[k2]) * -0.999847695156) {
-            return true;
-         }
-      }
-
-      const p0 = curve.c[mod(i, m) * 3 + 2].copy();
-      let p1 = vertex[mod(i + 1, m)].copy();
-      let p2 = vertex[mod(j, m)].copy();
-      const p3 = curve.c[mod(j, m) * 3 + 2].copy();
-
-      let area = areac[j] - areac[i];
-      area -= dpara(vertex[0], curve.c[i * 3 + 2], curve.c[j * 3 + 2]) / 2;
-      if (i >= j) {
-         area += areac[m];
-      }
-
-      const A1 = dpara(p0, p1, p2);
-      const A2 = dpara(p0, p1, p3);
-      const A3 = dpara(p0, p2, p3);
-      if (A2 === A1) {
-         return true;
-      }
-
-      const A4 = A1 + A3 - A2;
-      const t = A3 / (A3 - A4);
-      const s = A2 / (A2 - A1);
-      const A = A2 * t / 2.0;
-      if (A === 0.0) {
-         return true;
-      }
-
-      const R = area / A;
-      const alpha = 2 - Math.sqrt(4 - R / 0.3);
-      res.c[0] = interval(t * alpha, p0, p1);
-      res.c[1] = interval(s * alpha, p3, p2);
-      res.alpha = alpha;
-      res.t = t;
-      res.s = s;
-
-      p1 = res.c[0].copy();
-      p2 = res.c[1].copy();
-
-      res.pen = 0;
-
-      for (let k = mod(i + 1, m), k1: number; k !== j; k = k1) {
-         k1 = mod(k + 1, m);
-         const t = tangent(p0, p1, p2, p3, vertex[k], vertex[k1]);
-         if (t < -0.5) {
-            return true;
-         }
-         const pt = bezier(t, p0, p1, p2, p3);
-         const d = ddist(vertex[k], vertex[k1]);
-         if (d === 0.0) {
-            return true;
-         }
-         const d1 = dpara(vertex[k], vertex[k1], pt) / d;
-         if (Math.abs(d1) > optTolerance) {
-            return true;
-         }
-         if (iprod(vertex[k], vertex[k1], pt) < 0 ||
-            iprod(vertex[k1], vertex[k], pt) < 0) {
-            return true;
-         }
-         res.pen += d1 * d1;
-      }
-
-      for (let k = i, k1: number; k !== j; k = k1) {
-         k1 = mod(k + 1, m);
-         const t = tangent(p0, p1, p2, p3, curve.c[k * 3 + 2], curve.c[k1 * 3 + 2]);
-         if (t < -0.5) {
-            return true;
-         }
-         const pt = bezier(t, p0, p1, p2, p3);
-         const d = ddist(curve.c[k * 3 + 2], curve.c[k1 * 3 + 2]);
-         if (d === 0.0) {
-            return true;
-         }
-         let d1 = dpara(curve.c[k * 3 + 2], curve.c[k1 * 3 + 2], pt) / d;
-         let d2 = dpara(curve.c[k * 3 + 2], curve.c[k1 * 3 + 2], vertex[k1]) / d;
-         d2 *= 0.75 * curve.alpha[k1];
-         if (d2 < 0) {
-            d1 = -d1;
-            d2 = -d2;
-         }
-         if (d1 < d2 - optTolerance) {
-            return true;
-         }
-         if (d1 < d2) {
-            res.pen += (d1 - d2) * (d1 - d2);
-         }
-      }
-
-      return false;
-   }
-
-   function optiCurve(path: Path, optTolerance: number): void {
-      const curve = path.curve, m = curve.n, vert = curve.vertex,
-         pt = new Array(m + 1),
-         pen = new Array(m + 1),
-         len = new Array(m + 1),
-         opt = new Array(m + 1);
-
-      const convc = new Array(m), areac = new Array(m + 1);
-
-      for (let i = 0; i < m; ++i) {
-         if (curve.tag[i] === CurveTag.Curve) {
-            convc[i] = sign(dpara(vert[mod(i - 1, m)], vert[i], vert[mod(i + 1, m)]));
-         } else {
-            convc[i] = 0;
-         }
-      }
-
-      let area = 0.0;
-      areac[0] = 0.0;
-      const p0 = curve.vertex[0];
-      for (let i = 0; i < m; ++i) {
-         const i1 = mod(i + 1, m);
-         if (curve.tag[i1] === CurveTag.Curve) {
-            const alpha = curve.alpha[i1];
-            area += 0.3 * alpha * (4 - alpha) *
-               dpara(curve.c[i * 3 + 2], vert[i1], curve.c[i1 * 3 + 2]) / 2;
-            area += dpara(p0, curve.c[i * 3 + 2], curve.c[i1 * 3 + 2]) / 2;
-         }
-         areac[i + 1] = area;
-      }
-
-      pt[0] = -1;
-      pen[0] = 0;
-      len[0] = 0;
-
-      let o = new Opti();
-      for (let j = 1; j <= m; ++j) {
-         pt[j] = j - 1;
-         pen[j] = pen[j - 1];
-         len[j] = len[j - 1] + 1;
-
-         for (let i = j - 2; i >= 0; --i) {
-            const r = opti_penalty(path, i, mod(j, m), o, optTolerance, convc, areac);
-            if (r) {
-               break;
-            }
-            if (len[j] > len[i] + 1 ||
-               (len[j] === len[i] + 1 && pen[j] > pen[i] + o.pen)) {
-               pt[j] = i;
-               pen[j] = pen[i] + o.pen;
-               len[j] = len[i] + 1;
-               opt[j] = o;
-               o = new Opti();
-            }
-         }
-      }
-      const om = len[m];
-      const ocurve = new Curve(om);
-      const s = new Array(om);
-      const t = new Array(om);
-
-      for (let i = om - 1, j = m; i >= 0; --i) {
-         if (pt[j] === j - 1) {
-            ocurve.tag[i] = curve.tag[mod(j, m)];
-            ocurve.c[i * 3 + 0] = curve.c[mod(j, m) * 3 + 0];
-            ocurve.c[i * 3 + 1] = curve.c[mod(j, m) * 3 + 1];
-            ocurve.c[i * 3 + 2] = curve.c[mod(j, m) * 3 + 2];
-            ocurve.vertex[i] = curve.vertex[mod(j, m)];
-            ocurve.alpha[i] = curve.alpha[mod(j, m)];
-            ocurve.alpha0[i] = curve.alpha0[mod(j, m)];
-            ocurve.beta[i] = curve.beta[mod(j, m)];
-            s[i] = t[i] = 1.0;
-         } else {
-            ocurve.tag[i] = CurveTag.Curve;
-            ocurve.c[i * 3 + 0] = opt[j].c[0];
-            ocurve.c[i * 3 + 1] = opt[j].c[1];
-            ocurve.c[i * 3 + 2] = curve.c[mod(j, m) * 3 + 2];
-            ocurve.vertex[i] = interval(opt[j].s, curve.c[mod(j, m) * 3 + 2],
-               vert[mod(j, m)]);
-            ocurve.alpha[i] = opt[j].alpha;
-            ocurve.alpha0[i] = opt[j].alpha;
-            s[i] = opt[j].s;
-            t[i] = opt[j].t;
-         }
-         j = pt[j];
-      }
-
-      for (let i = 0; i < om; ++i) {
-         ocurve.beta[i] = s[i] / (s[i] + t[mod(i + 1, om)]);
-      }
-      ocurve.alphaCurve = 1;
-      path.curve = ocurve;
    }
 
    // --------

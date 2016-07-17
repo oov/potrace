@@ -1036,9 +1036,61 @@ module Potrace {
 
    // --------
 
+   function makeBitmap(src: HTMLImageElement | HTMLCanvasElement): Bitmap {
+      const canvas = document.createElement('canvas');
+      canvas.width = src.width;
+      canvas.height = src.height;
+      canvas.getContext('2d').drawImage(src, 0, 0);
+      const bm = new Bitmap(canvas.width, canvas.height);
+      const data = canvas.getContext('2d').getImageData(0, 0, bm.w, bm.h).data;
+      const l = data.length;
+      for (let i = 0, j = 0, color: number; i < l; i += 4, ++j) {
+         color = 0.2126 * data[i] + 0.7153 * data[i + 1] +
+            0.0721 * data[i + 2];
+         bm.data[j] = (color < 128 ? 1 : 0);
+      }
+      return bm;
+   }
+
+   function convertSVG(width: number, height: number, pathlist: Path[], scale: number, opt_type: string): string {
+      const w = width * scale, h = height * scale;
+      let svg = [`<svg id="svg" version="1.1" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">`];
+
+      svg.push('<path d="');
+      for (let i = 0, len = pathlist.length; i < len; ++i) {
+         const curve = pathlist[i].curve, n = curve.n;
+         svg.push('M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
+            ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ');
+         for (let i = 0; i < n; ++i) {
+            if (curve.tag[i] === 'CURVE') {
+               svg.push('C ' + (curve.c[i * 3 + 0].x * scale).toFixed(3) + ' ' +
+                  (curve.c[i * 3 + 0].y * scale).toFixed(3) + ',');
+               svg.push((curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
+                  (curve.c[i * 3 + 1].y * scale).toFixed(3) + ',');
+               svg.push((curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
+                  (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ');
+            } else if (curve.tag[i] === 'CORNER') {
+               svg.push('L ' + (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
+                  (curve.c[i * 3 + 1].y * scale).toFixed(3) + ' ');
+               svg.push((curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
+                  (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ');
+            }
+         }
+      }
+      if (opt_type === 'curve') {
+         svg.push('" stroke="black" fill="none"/>');
+      } else {
+         svg.push('" stroke="none" fill="black" fill-rule="evenodd"/>');
+      }
+      svg.push('</svg>');
+      return svg.join('');
+   }
+
    export class Potrace {
-      private bm: Bitmap;
       private pathlist: Path[] = [];
+
+      private width: number;
+      private height: number;
 
       public img = new Image();
       public turnPolicy = 'minority';
@@ -1047,116 +1099,45 @@ module Potrace {
       public alphaMax = 1;
       public optTolerance = 0.2;
 
-      public complete: (p: Potrace) => void = null;
+      constructor(src: HTMLImageElement | HTMLCanvasElement) {
+         const bm = makeBitmap(src);
+         this.width = bm.w;
+         this.height = bm.h;
 
-      constructor() {
-         const img = this.img;
-         img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            canvas.getContext('2d').drawImage(img, 0, 0);
-            this.bm = new Bitmap(canvas.width, canvas.height);
-            const bm = this.bm;
-            const data = canvas.getContext('2d').getImageData(0, 0, bm.w, bm.h).data;
-            const l = data.length;
-            for (let i = 0, j = 0, color: number; i < l; i += 4, ++j) {
-               color = 0.2126 * data[i] + 0.7153 * data[i + 1] +
-                  0.0721 * data[i + 2];
-               bm.data[j] = (color < 128 ? 1 : 0);
-            }
-
-            // bitmap to pathlist
-            const pathlist = this.pathlist;
-            const bm1 = bm.copy();
-            let currentPoint = new Point(0, 0);
-            while (currentPoint = findNext(bm1, currentPoint)) {
-               const path = findPath(bm, this.turnPolicy, bm1, currentPoint);
-               xorPath(bm1, path);
-               if (path.area > this.turdSize) {
-                  pathlist.push(path);
-               }
-            }
-
-            // process path
-            for (let i = 0; i < pathlist.length; ++i) {
-               const path = pathlist[i];
-               calcSums(path);
-               calcLon(path);
-               bestPolygon(path);
-               adjustVertices(path);
-
-               if (path.sign === '-') {
-                  reverse(path);
-               }
-
-               smooth(path, this.alphaMax);
-
-               if (this.optCurve) {
-                  optiCurve(path, this.optTolerance);
-               }
-            }
-
-            if (this.complete) {
-               this.complete(this);
-            }
-         };
-      }
-
-      public loadFromFile(file: File): void {
-         const fr = new FileReader();
-         fr.onload = e => this.img.src = fr.result;
-         fr.readAsDataURL(file);
-      }
-
-      public loadFromURL(url: string): void {
-         this.img.src = url;
-      }
-
-      private path(curve: Curve, scale: number): string {
-         const n = curve.n;
-         var p = 'M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
-            ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ';
-         for (let i = 0; i < n; ++i) {
-            if (curve.tag[i] === 'CURVE') {
-               p += 'C ' + (curve.c[i * 3 + 0].x * scale).toFixed(3) + ' ' +
-                  (curve.c[i * 3 + 0].y * scale).toFixed(3) + ',';
-               p += (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
-                  (curve.c[i * 3 + 1].y * scale).toFixed(3) + ',';
-               p += (curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
-                  (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ';
-            } else if (curve.tag[i] === 'CORNER') {
-               p += 'L ' + (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
-                  (curve.c[i * 3 + 1].y * scale).toFixed(3) + ' ';
-               p += (curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
-                  (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ';
+         // bitmap to pathlist
+         const pathlist = this.pathlist;
+         const bm1 = bm.copy();
+         let currentPoint = new Point(0, 0);
+         while (currentPoint = findNext(bm1, currentPoint)) {
+            const path = findPath(bm, this.turnPolicy, bm1, currentPoint);
+            xorPath(bm1, path);
+            if (path.area > this.turdSize) {
+               pathlist.push(path);
             }
          }
-         return p;
+
+         // process path
+         for (let i = 0; i < pathlist.length; ++i) {
+            const path = pathlist[i];
+            calcSums(path);
+            calcLon(path);
+            bestPolygon(path);
+            adjustVertices(path);
+
+            if (path.sign === '-') {
+               reverse(path);
+            }
+
+            smooth(path, this.alphaMax);
+
+            if (this.optCurve) {
+               optiCurve(path, this.optTolerance);
+            }
+         }
       }
 
-      public getSVG(scale: number, opt_type: string): string {
-         const bm = this.bm, pathlist = this.pathlist;
-         const w = bm.w * scale, h = bm.h * scale, len = pathlist.length;
-
-         let svg = '<svg id="svg" version="1.1" width="' + w + '" height="' + h +
-            '" xmlns="http://www.w3.org/2000/svg">';
-         svg += '<path d="';
-         for (let i = 0; i < len; ++i) {
-            svg += this.path(pathlist[i].curve, scale);
-         }
-         let strokec: string, fillc: string, fillrule: string;
-         if (opt_type === 'curve') {
-            strokec = 'black';
-            fillc = 'none';
-            fillrule = '';
-         } else {
-            strokec = 'none';
-            fillc = 'black';
-            fillrule = ' fill-rule="evenodd"';
-         }
-         svg += '" stroke="' + strokec + '" fill="' + fillc + '"' + fillrule + '/></svg>';
-         return svg;
+      public getSVG(scale: number, optType: string): string {
+         return convertSVG(this.width, this.height, this.pathlist, scale, optType);
       }
    }
 }

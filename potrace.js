@@ -927,9 +927,57 @@ var Potrace;
         path.curve = ocurve;
     }
     // --------
+    function makeBitmap(src) {
+        var canvas = document.createElement('canvas');
+        canvas.width = src.width;
+        canvas.height = src.height;
+        canvas.getContext('2d').drawImage(src, 0, 0);
+        var bm = new Bitmap(canvas.width, canvas.height);
+        var data = canvas.getContext('2d').getImageData(0, 0, bm.w, bm.h).data;
+        var l = data.length;
+        for (var i = 0, j = 0, color = void 0; i < l; i += 4, ++j) {
+            color = 0.2126 * data[i] + 0.7153 * data[i + 1] +
+                0.0721 * data[i + 2];
+            bm.data[j] = (color < 128 ? 1 : 0);
+        }
+        return bm;
+    }
+    function convertSVG(width, height, pathlist, scale, opt_type) {
+        var w = width * scale, h = height * scale;
+        var svg = [("<svg id=\"svg\" version=\"1.1\" width=\"" + w + "\" height=\"" + h + "\" xmlns=\"http://www.w3.org/2000/svg\">")];
+        svg.push('<path d="');
+        for (var i = 0, len = pathlist.length; i < len; ++i) {
+            var curve = pathlist[i].curve, n = curve.n;
+            svg.push('M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
+                ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ');
+            for (var i_6 = 0; i_6 < n; ++i_6) {
+                if (curve.tag[i_6] === 'CURVE') {
+                    svg.push('C ' + (curve.c[i_6 * 3 + 0].x * scale).toFixed(3) + ' ' +
+                        (curve.c[i_6 * 3 + 0].y * scale).toFixed(3) + ',');
+                    svg.push((curve.c[i_6 * 3 + 1].x * scale).toFixed(3) + ' ' +
+                        (curve.c[i_6 * 3 + 1].y * scale).toFixed(3) + ',');
+                    svg.push((curve.c[i_6 * 3 + 2].x * scale).toFixed(3) + ' ' +
+                        (curve.c[i_6 * 3 + 2].y * scale).toFixed(3) + ' ');
+                }
+                else if (curve.tag[i_6] === 'CORNER') {
+                    svg.push('L ' + (curve.c[i_6 * 3 + 1].x * scale).toFixed(3) + ' ' +
+                        (curve.c[i_6 * 3 + 1].y * scale).toFixed(3) + ' ');
+                    svg.push((curve.c[i_6 * 3 + 2].x * scale).toFixed(3) + ' ' +
+                        (curve.c[i_6 * 3 + 2].y * scale).toFixed(3) + ' ');
+                }
+            }
+        }
+        if (opt_type === 'curve') {
+            svg.push('" stroke="black" fill="none"/>');
+        }
+        else {
+            svg.push('" stroke="none" fill="black" fill-rule="evenodd"/>');
+        }
+        svg.push('</svg>');
+        return svg.join('');
+    }
     var Potrace = (function () {
-        function Potrace() {
-            var _this = this;
+        function Potrace(src) {
             this.pathlist = [];
             this.img = new Image();
             this.turnPolicy = 'minority';
@@ -937,106 +985,38 @@ var Potrace;
             this.optCurve = true;
             this.alphaMax = 1;
             this.optTolerance = 0.2;
-            this.complete = null;
-            var img = this.img;
-            img.onload = function () {
-                var canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                canvas.getContext('2d').drawImage(img, 0, 0);
-                _this.bm = new Bitmap(canvas.width, canvas.height);
-                var bm = _this.bm;
-                var data = canvas.getContext('2d').getImageData(0, 0, bm.w, bm.h).data;
-                var l = data.length;
-                for (var i = 0, j = 0, color = void 0; i < l; i += 4, ++j) {
-                    color = 0.2126 * data[i] + 0.7153 * data[i + 1] +
-                        0.0721 * data[i + 2];
-                    bm.data[j] = (color < 128 ? 1 : 0);
+            var bm = makeBitmap(src);
+            this.width = bm.w;
+            this.height = bm.h;
+            // bitmap to pathlist
+            var pathlist = this.pathlist;
+            var bm1 = bm.copy();
+            var currentPoint = new Point(0, 0);
+            while (currentPoint = findNext(bm1, currentPoint)) {
+                var path = findPath(bm, this.turnPolicy, bm1, currentPoint);
+                xorPath(bm1, path);
+                if (path.area > this.turdSize) {
+                    pathlist.push(path);
                 }
-                // bitmap to pathlist
-                var pathlist = _this.pathlist;
-                var bm1 = bm.copy();
-                var currentPoint = new Point(0, 0);
-                while (currentPoint = findNext(bm1, currentPoint)) {
-                    var path = findPath(bm, _this.turnPolicy, bm1, currentPoint);
-                    xorPath(bm1, path);
-                    if (path.area > _this.turdSize) {
-                        pathlist.push(path);
-                    }
+            }
+            // process path
+            for (var i = 0; i < pathlist.length; ++i) {
+                var path = pathlist[i];
+                calcSums(path);
+                calcLon(path);
+                bestPolygon(path);
+                adjustVertices(path);
+                if (path.sign === '-') {
+                    reverse(path);
                 }
-                // process path
-                for (var i = 0; i < pathlist.length; ++i) {
-                    var path = pathlist[i];
-                    calcSums(path);
-                    calcLon(path);
-                    bestPolygon(path);
-                    adjustVertices(path);
-                    if (path.sign === '-') {
-                        reverse(path);
-                    }
-                    smooth(path, _this.alphaMax);
-                    if (_this.optCurve) {
-                        optiCurve(path, _this.optTolerance);
-                    }
+                smooth(path, this.alphaMax);
+                if (this.optCurve) {
+                    optiCurve(path, this.optTolerance);
                 }
-                if (_this.complete) {
-                    _this.complete(_this);
-                }
-            };
+            }
         }
-        Potrace.prototype.loadFromFile = function (file) {
-            var _this = this;
-            var fr = new FileReader();
-            fr.onload = function (e) { return _this.img.src = fr.result; };
-            fr.readAsDataURL(file);
-        };
-        Potrace.prototype.loadFromURL = function (url) {
-            this.img.src = url;
-        };
-        Potrace.prototype.path = function (curve, scale) {
-            var n = curve.n;
-            var p = 'M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
-                ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ';
-            for (var i = 0; i < n; ++i) {
-                if (curve.tag[i] === 'CURVE') {
-                    p += 'C ' + (curve.c[i * 3 + 0].x * scale).toFixed(3) + ' ' +
-                        (curve.c[i * 3 + 0].y * scale).toFixed(3) + ',';
-                    p += (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
-                        (curve.c[i * 3 + 1].y * scale).toFixed(3) + ',';
-                    p += (curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
-                        (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ';
-                }
-                else if (curve.tag[i] === 'CORNER') {
-                    p += 'L ' + (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
-                        (curve.c[i * 3 + 1].y * scale).toFixed(3) + ' ';
-                    p += (curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
-                        (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ';
-                }
-            }
-            return p;
-        };
-        Potrace.prototype.getSVG = function (scale, opt_type) {
-            var bm = this.bm, pathlist = this.pathlist;
-            var w = bm.w * scale, h = bm.h * scale, len = pathlist.length;
-            var svg = '<svg id="svg" version="1.1" width="' + w + '" height="' + h +
-                '" xmlns="http://www.w3.org/2000/svg">';
-            svg += '<path d="';
-            for (var i = 0; i < len; ++i) {
-                svg += this.path(pathlist[i].curve, scale);
-            }
-            var strokec, fillc, fillrule;
-            if (opt_type === 'curve') {
-                strokec = 'black';
-                fillc = 'none';
-                fillrule = '';
-            }
-            else {
-                strokec = 'none';
-                fillc = 'black';
-                fillrule = ' fill-rule="evenodd"';
-            }
-            svg += '" stroke="' + strokec + '" fill="' + fillc + '"' + fillrule + '/></svg>';
-            return svg;
+        Potrace.prototype.getSVG = function (scale, optType) {
+            return convertSVG(this.width, this.height, this.pathlist, scale, optType);
         };
         return Potrace;
     }());

@@ -154,32 +154,6 @@ module Potrace {
       loadBm();
    };
 
-   export function loadImageFromFile(file: File): void {
-      if (info.isReady) {
-         clear();
-      }
-      const reader = new FileReader();
-      const imgE = imgElement;
-      reader.onload = e => imgE.src = reader.result;
-      reader.readAsDataURL(file);
-   }
-
-   export function loadImageFromUrl(url: string): void {
-      if (info.isReady) {
-         clear();
-      }
-      imgElement.src = url;
-   }
-
-   export function setParameter(obj: Parameters): void {
-      let key: string;
-      for (key in obj) {
-         if (obj.hasOwnProperty(key)) {
-            info[key] = obj[key];
-         }
-      }
-   }
-
    function loadCanvas(): void {
       imgCanvas.width = imgElement.width;
       imgCanvas.height = imgElement.height;
@@ -1145,6 +1119,41 @@ module Potrace {
 
    }
 
+   function clear() {
+      bm = null;
+      pathlist = [];
+      callback = null;
+      info.isReady = false;
+   }
+
+   // --------
+
+   export function loadImageFromFile(file: File): void {
+      if (info.isReady) {
+         clear();
+      }
+      const reader = new FileReader();
+      const imgE = imgElement;
+      reader.onload = e => imgE.src = reader.result;
+      reader.readAsDataURL(file);
+   }
+
+   export function loadImageFromUrl(url: string): void {
+      if (info.isReady) {
+         clear();
+      }
+      imgElement.src = url;
+   }
+
+   export function setParameter(obj: Parameters): void {
+      let key: string;
+      for (key in obj) {
+         if (obj.hasOwnProperty(key)) {
+            info[key] = obj[key];
+         }
+      }
+   }
+
    export function process(c: () => void) {
       if (c) {
          callback = c;
@@ -1157,13 +1166,6 @@ module Potrace {
       processPath();
       callback();
       callback = null;
-   }
-
-   function clear() {
-      bm = null;
-      pathlist = [];
-      callback = null;
-      info.isReady = false;
    }
 
    export function getSVG(size: number, opt_type: string): string {

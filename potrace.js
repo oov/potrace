@@ -140,32 +140,6 @@ var Potrace;
         loadCanvas();
         loadBm();
     };
-    function loadImageFromFile(file) {
-        if (info.isReady) {
-            clear();
-        }
-        var reader = new FileReader();
-        var imgE = imgElement;
-        reader.onload = function (e) { return imgE.src = reader.result; };
-        reader.readAsDataURL(file);
-    }
-    Potrace.loadImageFromFile = loadImageFromFile;
-    function loadImageFromUrl(url) {
-        if (info.isReady) {
-            clear();
-        }
-        imgElement.src = url;
-    }
-    Potrace.loadImageFromUrl = loadImageFromUrl;
-    function setParameter(obj) {
-        var key;
-        for (key in obj) {
-            if (obj.hasOwnProperty(key)) {
-                info[key] = obj[key];
-            }
-        }
-    }
-    Potrace.setParameter = setParameter;
     function loadCanvas() {
         imgCanvas.width = imgElement.width;
         imgCanvas.height = imgElement.height;
@@ -1009,6 +983,39 @@ var Potrace;
             }
         }
     }
+    function clear() {
+        bm = null;
+        pathlist = [];
+        callback = null;
+        info.isReady = false;
+    }
+    // --------
+    function loadImageFromFile(file) {
+        if (info.isReady) {
+            clear();
+        }
+        var reader = new FileReader();
+        var imgE = imgElement;
+        reader.onload = function (e) { return imgE.src = reader.result; };
+        reader.readAsDataURL(file);
+    }
+    Potrace.loadImageFromFile = loadImageFromFile;
+    function loadImageFromUrl(url) {
+        if (info.isReady) {
+            clear();
+        }
+        imgElement.src = url;
+    }
+    Potrace.loadImageFromUrl = loadImageFromUrl;
+    function setParameter(obj) {
+        var key;
+        for (key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                info[key] = obj[key];
+            }
+        }
+    }
+    Potrace.setParameter = setParameter;
     function process(c) {
         if (c) {
             callback = c;
@@ -1023,12 +1030,6 @@ var Potrace;
         callback = null;
     }
     Potrace.process = process;
-    function clear() {
-        bm = null;
-        pathlist = [];
-        callback = null;
-        info.isReady = false;
-    }
     function getSVG(size, opt_type) {
         function path(curve) {
             function bezier(i) {

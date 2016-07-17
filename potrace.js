@@ -887,6 +887,21 @@ var Potrace;
                 height: this.height
             };
         };
+        PathList.prototype.strokePath = function (ctx) {
+            for (var i = 0, len = this.length; i < len; ++i) {
+                var curve = this[i].curve, c = curve.c, n = curve.n * 3;
+                ctx.moveTo(c[n - 1].x, c[n - 1].y);
+                for (var i_8 = 0, j = 0; j < n; ++i_8, j += 3) {
+                    if (curve.tag[i_8] === 0 /* Curve */) {
+                        ctx.bezierCurveTo(c[j + 0].x, c[j + 0].y, c[j + 1].x, c[j + 1].y, c[j + 2].x, c[j + 2].y);
+                    }
+                    else if (curve.tag[i_8] === 1 /* Corner */) {
+                        ctx.lineTo(c[j + 1].x, c[j + 1].y);
+                        ctx.lineTo(c[j + 2].x, c[j + 2].y);
+                    }
+                }
+            }
+        };
         PathList.fromFunction = function (f, width, height, policy, turdSize) {
             var bm = Bitmap.createFromFunction(f, width, height);
             return new PathListBuilder(bm, policy).trace(f, turdSize);
@@ -1026,7 +1041,6 @@ var Potrace;
         };
         return PathListBuilder;
     }());
-    // --------
     function mod(a, n) {
         return a >= n ? a % n : a >= 0 ? a : n - 1 - (-1 - a) % n;
     }

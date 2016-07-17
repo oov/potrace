@@ -100,15 +100,39 @@ module Potrace {
       public maxY = -1;
       public signIsPlus = true;
 
+      public makeCurve(): void {
+         this.curve = Curve.createFromPath(this);
+      }
       public optimize(alphaMax: number, optCurve: boolean, optTolerance: number): void {
-         const curve = new CurveBuilder(this).do();
-         const opt = new CurveOptimizer(curve);
-         opt.smooth(alphaMax);
-         if (optCurve) {
-            this.curve = opt.optimize(optTolerance);
-         } else {
-            this.curve = curve;
+         this.curve = this.curve.optimize(alphaMax, optCurve, optTolerance);
+      }
+   }
+
+   class Curve {
+      public tag: CurveTag[];
+      public c: Point[];
+      public vertex: Point[];
+      constructor(public n: number) {
+         this.tag = new Array(n);
+         this.c = new Array(n * 3);
+         this.vertex = new Array(n);
+      }
+
+      public reverse(): void {
+         const m = this.n, v = this.vertex;
+         for (let i = 0, j = m - 1; i < j; ++i, --j) {
+            const tmp = v[i];
+            v[i] = v[j];
+            v[j] = tmp;
          }
+      }
+
+      public static createFromPath(path: Path): Curve {
+         return CurveBuilder.build(path);
+      }
+
+      public optimize(alphaMax: number, optCurve: boolean, optTolerance: number): Curve {
+         return CurveOptimizer.optimize(this, alphaMax, optCurve, optTolerance);
       }
    }
 
@@ -119,13 +143,14 @@ module Potrace {
       private lon: number[];
       private m: number;
       private po: number[];
-      constructor(private path: Path) { }
+      private constructor(private path: Path) { }
 
-      public do(): Curve {
-         this.calcSums();
-         this.calcLon();
-         this.bestPolygon();
-         return this.adjustVertices();
+      public static build(path: Path): Curve {
+         const cb = new CurveBuilder(path);
+         cb.calcSums();
+         cb.calcLon();
+         cb.bestPolygon();
+         return cb.adjustVertices();
       }
 
       private calcSums(): void {
@@ -556,39 +581,28 @@ module Potrace {
       }
    }
 
-   class Curve {
-      public tag: CurveTag[];
-      public c: Point[];
-      public vertex: Point[];
-      constructor(public n: number) {
-         this.tag = new Array(n);
-         this.c = new Array(n * 3);
-         this.vertex = new Array(n);
-      }
-
-      public reverse(): void {
-         const m = this.n, v = this.vertex;
-         for (let i = 0, j = m - 1; i < j; ++i, --j) {
-            const tmp = v[i];
-            v[i] = v[j];
-            v[j] = tmp;
-         }
-      }
-   }
-
    class CurveOptimizer {
       private alphaCurve = 0;
       private alpha: number[];
       private alpha0: number[];
       private beta: number[];
-      constructor(private curve: Curve) {
+      private constructor(private curve: Curve) {
          const n = curve.n;
          this.alpha = new Array(n);
          this.alpha0 = new Array(n);
          this.beta = new Array(n);
       }
 
-      public smooth(alphaMax: number): void {
+      public static optimize(curve: Curve, alphaMax: number, optCurve: boolean, optTolerance: number): Curve {
+         const opt = new CurveOptimizer(curve);
+         opt.smooth(alphaMax);
+         if (optCurve) {
+            return opt.optiCurve(optTolerance);
+         }
+         return curve;
+      }
+
+      private smooth(alphaMax: number): void {
          const curve = this.curve;
          const vertex = curve.vertex;
          const m = curve.n;
@@ -628,7 +642,7 @@ module Potrace {
          this.alphaCurve = 1;
       }
 
-      public optimize(optTolerance: number): Curve {
+      private optiCurve(optTolerance: number): Curve {
          const curve = this.curve;
          const m = curve.n, vert = curve.vertex,
             pt = new Array(m + 1),
@@ -882,6 +896,7 @@ module Potrace {
 
       public optimize(alphaMax: number, optCurve: boolean, optTolerance: number): void {
          for (let i = 0; i < this.length; ++i) {
+            this[i].makeCurve();
             this[i].optimize(alphaMax, optCurve, optTolerance);
          }
       }
@@ -889,25 +904,24 @@ module Potrace {
       public toSVG(scale: number, optType: string): string {
          const w = this.width * scale, h = this.height * scale;
          let svg = [`<svg id="svg" version="1.1" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">`];
-
          svg.push('<path d="');
          for (let i = 0, len = this.length; i < len; ++i) {
-            const curve = this[i].curve, n = curve.n;
-            svg.push('M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
-               ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ');
-            for (let i = 0; i < n; ++i) {
+            const curve = this[i].curve, c = curve.c, n = curve.n * 3;
+            svg.push('M' + (c[n - 1].x * scale).toFixed(3) +
+               ' ' + (c[n - 1].y * scale).toFixed(3) + ' ');
+            for (let i = 0, j = 0; j < n; ++i, j += 3) {
                if (curve.tag[i] === CurveTag.Curve) {
-                  svg.push('C ' + (curve.c[i * 3 + 0].x * scale).toFixed(3) + ' ' +
-                     (curve.c[i * 3 + 0].y * scale).toFixed(3) + ',');
-                  svg.push((curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
-                     (curve.c[i * 3 + 1].y * scale).toFixed(3) + ',');
-                  svg.push((curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
-                     (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ');
+                  svg.push('C ' + (c[j + 0].x * scale).toFixed(3) + ' ' +
+                     (c[j + 0].y * scale).toFixed(3) + ',');
+                  svg.push((c[j + 1].x * scale).toFixed(3) + ' ' +
+                     (c[j + 1].y * scale).toFixed(3) + ',');
+                  svg.push((c[j + 2].x * scale).toFixed(3) + ' ' +
+                     (c[j + 2].y * scale).toFixed(3) + ' ');
                } else if (curve.tag[i] === CurveTag.Corner) {
-                  svg.push('L ' + (curve.c[i * 3 + 1].x * scale).toFixed(3) + ' ' +
-                     (curve.c[i * 3 + 1].y * scale).toFixed(3) + ' ');
-                  svg.push((curve.c[i * 3 + 2].x * scale).toFixed(3) + ' ' +
-                     (curve.c[i * 3 + 2].y * scale).toFixed(3) + ' ');
+                  svg.push('L ' + (c[j + 1].x * scale).toFixed(3) + ' ' +
+                     (c[j + 1].y * scale).toFixed(3) + ' ');
+                  svg.push((c[j + 2].x * scale).toFixed(3) + ' ' +
+                     (c[j + 2].y * scale).toFixed(3) + ' ');
                }
             }
          }
@@ -918,6 +932,35 @@ module Potrace {
          }
          svg.push('</svg>');
          return svg.join('');
+      }
+
+      public simplify(): { paths: number[][], width: number, height: number } {
+         let r: number[][] = [];
+         for (let i = 0, len = this.length; i < len; ++i) {
+            const curve = this[i].curve, c = curve.c, n = curve.n * 3;
+            r.push([
+               c[n - 1].x, c[n - 1].y
+            ]);
+            for (let i = 0, j = 0; j < n; ++i, j += 3) {
+               if (curve.tag[i] === CurveTag.Curve) {
+                  r.push([
+                     c[j + 0].x, c[j + 0].y,
+                     c[j + 1].x, c[j + 1].y,
+                     c[j + 2].x, c[j + 2].y
+                  ]);
+               } else if (curve.tag[i] === CurveTag.Corner) {
+                  r.push([
+                     c[j + 1].x, c[j + 1].y,
+                     c[j + 2].x, c[j + 2].y
+                  ]);
+               }
+            }
+         }
+         return {
+            paths: r,
+            width: this.width,
+            height: this.height
+         };
       }
 
       public static fromFunction(f: (x: number, y: number) => boolean,
@@ -1180,16 +1223,40 @@ module Potrace {
 
    // --------
 
-   export function fromImage(src: HTMLImageElement | HTMLCanvasElement): PathList {
+   export interface Options {
+      turnPolicy?: TurnPolicy;
+      turdSize?: number;
+      alphaMax?: number;
+      optCurve?: boolean;
+      optTolerance?: number;
+   }
+
+   export function fromImage(src: HTMLImageElement | HTMLCanvasElement, opt: Options): PathList {
       const bmp = Bitmap.createFromImage(src);
-      const pl = PathList.fromBitmap(bmp, TurnPolicy.Minority, 2);
-      pl.optimize(1, true, 0.2);
+      opt = opt || {};
+      const pl = PathList.fromBitmap(bmp,
+         'turnPolicy' in opt ? opt.turnPolicy : TurnPolicy.Minority,
+         'turdSize' in opt ? opt.turdSize : 2
+      );
+      pl.optimize(
+         'alphaMax' in opt ? opt.alphaMax : 1,
+         'optCurve' in opt ? opt.optCurve : true,
+         'optTolerance' in opt ? opt.optTolerance : 0.2
+      );
       return pl;
    }
 
-   export function fromFunction(f: (x: number, y: number) => boolean, width: number, height: number): PathList {
-      const pl = PathList.fromFunction(f, width, height, TurnPolicy.Minority, 2);
-      pl.optimize(1, true, 0.2);
+   export function fromFunction(f: (x: number, y: number) => boolean, width: number, height: number, opt: Options): PathList {
+      opt = opt || {};
+      const pl = PathList.fromFunction(f, width, height,
+         'turnPolicy' in opt ? opt.turnPolicy : TurnPolicy.Minority,
+         'turdSize' in opt ? opt.turdSize : 2
+      );
+      pl.optimize(
+         'alphaMax' in opt ? opt.alphaMax : 1,
+         'optCurve' in opt ? opt.optCurve : true,
+         'optTolerance' in opt ? opt.optTolerance : 0.2
+      );
       return pl;
    }
 }

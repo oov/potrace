@@ -103,28 +103,47 @@ var Potrace;
             this.maxY = -1;
             this.signIsPlus = true;
         }
+        Path.prototype.makeCurve = function () {
+            this.curve = Curve.createFromPath(this);
+        };
         Path.prototype.optimize = function (alphaMax, optCurve, optTolerance) {
-            var curve = new CurveBuilder(this).do();
-            var opt = new CurveOptimizer(curve);
-            opt.smooth(alphaMax);
-            if (optCurve) {
-                this.curve = opt.optimize(optTolerance);
-            }
-            else {
-                this.curve = curve;
-            }
+            this.curve = this.curve.optimize(alphaMax, optCurve, optTolerance);
         };
         return Path;
+    }());
+    var Curve = (function () {
+        function Curve(n) {
+            this.n = n;
+            this.tag = new Array(n);
+            this.c = new Array(n * 3);
+            this.vertex = new Array(n);
+        }
+        Curve.prototype.reverse = function () {
+            var m = this.n, v = this.vertex;
+            for (var i = 0, j = m - 1; i < j; ++i, --j) {
+                var tmp = v[i];
+                v[i] = v[j];
+                v[j] = tmp;
+            }
+        };
+        Curve.createFromPath = function (path) {
+            return CurveBuilder.build(path);
+        };
+        Curve.prototype.optimize = function (alphaMax, optCurve, optTolerance) {
+            return CurveOptimizer.optimize(this, alphaMax, optCurve, optTolerance);
+        };
+        return Curve;
     }());
     var CurveBuilder = (function () {
         function CurveBuilder(path) {
             this.path = path;
         }
-        CurveBuilder.prototype.do = function () {
-            this.calcSums();
-            this.calcLon();
-            this.bestPolygon();
-            return this.adjustVertices();
+        CurveBuilder.build = function (path) {
+            var cb = new CurveBuilder(path);
+            cb.calcSums();
+            cb.calcLon();
+            cb.bestPolygon();
+            return cb.adjustVertices();
         };
         CurveBuilder.prototype.calcSums = function () {
             var path = this.path;
@@ -503,23 +522,6 @@ var Potrace;
         };
         return CurveBuilder;
     }());
-    var Curve = (function () {
-        function Curve(n) {
-            this.n = n;
-            this.tag = new Array(n);
-            this.c = new Array(n * 3);
-            this.vertex = new Array(n);
-        }
-        Curve.prototype.reverse = function () {
-            var m = this.n, v = this.vertex;
-            for (var i = 0, j = m - 1; i < j; ++i, --j) {
-                var tmp = v[i];
-                v[i] = v[j];
-                v[j] = tmp;
-            }
-        };
-        return Curve;
-    }());
     var CurveOptimizer = (function () {
         function CurveOptimizer(curve) {
             this.curve = curve;
@@ -529,6 +531,14 @@ var Potrace;
             this.alpha0 = new Array(n);
             this.beta = new Array(n);
         }
+        CurveOptimizer.optimize = function (curve, alphaMax, optCurve, optTolerance) {
+            var opt = new CurveOptimizer(curve);
+            opt.smooth(alphaMax);
+            if (optCurve) {
+                return opt.optiCurve(optTolerance);
+            }
+            return curve;
+        };
         CurveOptimizer.prototype.smooth = function (alphaMax) {
             var curve = this.curve;
             var vertex = curve.vertex;
@@ -569,7 +579,7 @@ var Potrace;
             }
             this.alphaCurve = 1;
         };
-        CurveOptimizer.prototype.optimize = function (optTolerance) {
+        CurveOptimizer.prototype.optiCurve = function (optTolerance) {
             var curve = this.curve;
             var m = curve.n, vert = curve.vertex, pt = new Array(m + 1), pen = new Array(m + 1), len = new Array(m + 1), opt = new Array(m + 1);
             var convc = new Array(m), areac = new Array(m + 1);
@@ -810,6 +820,7 @@ var Potrace;
         }
         PathList.prototype.optimize = function (alphaMax, optCurve, optTolerance) {
             for (var i = 0; i < this.length; ++i) {
+                this[i].makeCurve();
                 this[i].optimize(alphaMax, optCurve, optTolerance);
             }
         };
@@ -818,23 +829,23 @@ var Potrace;
             var svg = [("<svg id=\"svg\" version=\"1.1\" width=\"" + w + "\" height=\"" + h + "\" xmlns=\"http://www.w3.org/2000/svg\">")];
             svg.push('<path d="');
             for (var i = 0, len = this.length; i < len; ++i) {
-                var curve = this[i].curve, n = curve.n;
-                svg.push('M' + (curve.c[(n - 1) * 3 + 2].x * scale).toFixed(3) +
-                    ' ' + (curve.c[(n - 1) * 3 + 2].y * scale).toFixed(3) + ' ');
-                for (var i_6 = 0; i_6 < n; ++i_6) {
+                var curve = this[i].curve, c = curve.c, n = curve.n * 3;
+                svg.push('M' + (c[n - 1].x * scale).toFixed(3) +
+                    ' ' + (c[n - 1].y * scale).toFixed(3) + ' ');
+                for (var i_6 = 0, j = 0; j < n; ++i_6, j += 3) {
                     if (curve.tag[i_6] === 0 /* Curve */) {
-                        svg.push('C ' + (curve.c[i_6 * 3 + 0].x * scale).toFixed(3) + ' ' +
-                            (curve.c[i_6 * 3 + 0].y * scale).toFixed(3) + ',');
-                        svg.push((curve.c[i_6 * 3 + 1].x * scale).toFixed(3) + ' ' +
-                            (curve.c[i_6 * 3 + 1].y * scale).toFixed(3) + ',');
-                        svg.push((curve.c[i_6 * 3 + 2].x * scale).toFixed(3) + ' ' +
-                            (curve.c[i_6 * 3 + 2].y * scale).toFixed(3) + ' ');
+                        svg.push('C ' + (c[j + 0].x * scale).toFixed(3) + ' ' +
+                            (c[j + 0].y * scale).toFixed(3) + ',');
+                        svg.push((c[j + 1].x * scale).toFixed(3) + ' ' +
+                            (c[j + 1].y * scale).toFixed(3) + ',');
+                        svg.push((c[j + 2].x * scale).toFixed(3) + ' ' +
+                            (c[j + 2].y * scale).toFixed(3) + ' ');
                     }
                     else if (curve.tag[i_6] === 1 /* Corner */) {
-                        svg.push('L ' + (curve.c[i_6 * 3 + 1].x * scale).toFixed(3) + ' ' +
-                            (curve.c[i_6 * 3 + 1].y * scale).toFixed(3) + ' ');
-                        svg.push((curve.c[i_6 * 3 + 2].x * scale).toFixed(3) + ' ' +
-                            (curve.c[i_6 * 3 + 2].y * scale).toFixed(3) + ' ');
+                        svg.push('L ' + (c[j + 1].x * scale).toFixed(3) + ' ' +
+                            (c[j + 1].y * scale).toFixed(3) + ' ');
+                        svg.push((c[j + 2].x * scale).toFixed(3) + ' ' +
+                            (c[j + 2].y * scale).toFixed(3) + ' ');
                     }
                 }
             }
@@ -846,6 +857,35 @@ var Potrace;
             }
             svg.push('</svg>');
             return svg.join('');
+        };
+        PathList.prototype.simplify = function () {
+            var r = [];
+            for (var i = 0, len = this.length; i < len; ++i) {
+                var curve = this[i].curve, c = curve.c, n = curve.n * 3;
+                r.push([
+                    c[n - 1].x, c[n - 1].y
+                ]);
+                for (var i_7 = 0, j = 0; j < n; ++i_7, j += 3) {
+                    if (curve.tag[i_7] === 0 /* Curve */) {
+                        r.push([
+                            c[j + 0].x, c[j + 0].y,
+                            c[j + 1].x, c[j + 1].y,
+                            c[j + 2].x, c[j + 2].y
+                        ]);
+                    }
+                    else if (curve.tag[i_7] === 1 /* Corner */) {
+                        r.push([
+                            c[j + 1].x, c[j + 1].y,
+                            c[j + 2].x, c[j + 2].y
+                        ]);
+                    }
+                }
+            }
+            return {
+                paths: r,
+                width: this.width,
+                height: this.height
+            };
         };
         PathList.fromFunction = function (f, width, height, policy, turdSize) {
             var bm = Bitmap.createFromFunction(f, width, height);
@@ -1076,17 +1116,18 @@ var Potrace;
             return -1.0;
         }
     }
-    // --------
-    function fromImage(src) {
+    function fromImage(src, opt) {
         var bmp = Bitmap.createFromImage(src);
-        var pl = PathList.fromBitmap(bmp, 4 /* Minority */, 2);
-        pl.optimize(1, true, 0.2);
+        opt = opt || {};
+        var pl = PathList.fromBitmap(bmp, 'turnPolicy' in opt ? opt.turnPolicy : 4 /* Minority */, 'turdSize' in opt ? opt.turdSize : 2);
+        pl.optimize('alphaMax' in opt ? opt.alphaMax : 1, 'optCurve' in opt ? opt.optCurve : true, 'optTolerance' in opt ? opt.optTolerance : 0.2);
         return pl;
     }
     Potrace.fromImage = fromImage;
-    function fromFunction(f, width, height) {
-        var pl = PathList.fromFunction(f, width, height, 4 /* Minority */, 2);
-        pl.optimize(1, true, 0.2);
+    function fromFunction(f, width, height, opt) {
+        opt = opt || {};
+        var pl = PathList.fromFunction(f, width, height, 'turnPolicy' in opt ? opt.turnPolicy : 4 /* Minority */, 'turdSize' in opt ? opt.turdSize : 2);
+        pl.optimize('alphaMax' in opt ? opt.alphaMax : 1, 'optCurve' in opt ? opt.optCurve : true, 'optTolerance' in opt ? opt.optTolerance : 0.2);
         return pl;
     }
     Potrace.fromFunction = fromFunction;

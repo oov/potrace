@@ -127,7 +127,6 @@ var Potrace;
         }
         return Opti;
     }());
-    ;
     var imgElement = document.createElement('img'), imgCanvas = document.createElement('canvas'), bm = null, pathlist = [], callback = null, info = {
         isReady: false,
         turnpolicy: 'minority',

@@ -133,7 +133,7 @@ module Potrace {
       optcurve?: boolean;
       alphamax?: number;
       opttolerance?: number;
-   };
+   }
 
    var imgElement = document.createElement('img'),
       imgCanvas = document.createElement('canvas'),

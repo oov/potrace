@@ -77,24 +77,27 @@ var Potrace;
             }
             return bm;
         };
-        Bitmap.prototype.findNext = function (point) {
-            for (var i = this.width * point.y + point.x, len = this.data.length; i < len; ++i) {
-                if (this.data[i]) {
-                    var y = Math.floor(i / this.width);
-                    return new Point(i - y * this.width, y);
-                }
-            }
-            return null;
-        };
         Bitmap.createFromImage = function (src) {
-            var canvas = document.createElement('canvas');
-            canvas.width = src.width;
-            canvas.height = src.height;
-            canvas.getContext('2d').drawImage(src, 0, 0);
-            var bm = new Bitmap(canvas.width, canvas.height);
-            var data = canvas.getContext('2d').getImageData(0, 0, bm.width, bm.height).data;
+            var ctx = document.createElement('canvas').getContext('2d');
+            ctx.canvas.width = src.width;
+            ctx.canvas.height = src.height;
+            ctx.drawImage(src, 0, 0);
+            var bm = new Bitmap(src.width, src.height);
+            var data = ctx.getImageData(0, 0, bm.width, bm.height).data;
             for (var i = 0, j = 0, l = data.length; i < l; i += 4, ++j) {
                 bm.data[j] = 0.2126 * data[i] + 0.7153 * data[i + 1] + 0.0721 * data[i + 2] < 128 ? 1 : 0;
+            }
+            return bm;
+        };
+        Bitmap.createFromImageAlpha = function (src) {
+            var ctx = document.createElement('canvas').getContext('2d');
+            ctx.canvas.width = src.width;
+            ctx.canvas.height = src.height;
+            ctx.drawImage(src, 0, 0);
+            var bm = new Bitmap(src.width, src.height);
+            var data = ctx.getImageData(0, 0, bm.width, bm.height).data;
+            for (var i = 0, j = 0, l = data.length; i < l; i += 4, ++j) {
+                bm.data[j] = data[i + 3] >= 128 ? 1 : 0;
             }
             return bm;
         };
@@ -118,7 +121,7 @@ var Potrace;
             this.minY = 100000;
             this.maxX = -1;
             this.maxY = -1;
-            this.sign = '+';
+            this.signIsPlus = true;
         }
         return Path;
     }());
@@ -205,98 +208,145 @@ var Potrace;
             svg.push('</svg>');
             return svg.join('');
         };
+        PathList.fromFunction = function (f, width, height, policy, turdSize) {
+            var bm = Bitmap.createFromFunction(f, width, height);
+            return new PathListBuilder(bm, policy).trace(f, turdSize);
+        };
+        PathList.fromBitmap = function (src, policy, turdSize) {
+            return new PathListBuilder(src.copy(), policy).trace(function (x, y) { return src.at(x, y); }, turdSize);
+        };
         return PathList;
     }(Array));
-    function majority(bm1, x, y) {
-        for (var i = 2; i < 5; i++) {
-            var ct = 0;
-            for (var a = -i + 1; a <= i - 1; a++) {
-                ct += bm1.at(x + a, y + i - 1) ? 1 : -1;
-                ct += bm1.at(x + i - 1, y + a - 1) ? 1 : -1;
-                ct += bm1.at(x + a - 1, y - i) ? 1 : -1;
-                ct += bm1.at(x - i, y + a) ? 1 : -1;
-            }
-            if (ct > 0) {
-                return 1;
-            }
-            else if (ct < 0) {
-                return 0;
-            }
+    var PathListBuilder = (function () {
+        function PathListBuilder(bm, policy) {
+            this.bm = bm;
+            this.policy = policy;
         }
-        return 0;
-    }
-    function findPath(bm, turnPolicy, bm1, point) {
-        var path = new Path();
-        var x = point.x, y = point.y, dirx = 0, diry = 1, tmp;
-        path.sign = bm.at(x, y) ? '+' : '-';
-        while (1) {
-            path.pt.push(new Point(x, y));
-            if (x > path.maxX) {
-                path.maxX = x;
+        PathListBuilder.prototype.trace = function (f, turdSize) {
+            var r = new PathList(this.bm.width, this.bm.height);
+            var cur = new Point(0, 0);
+            while (cur = this.findNext(cur)) {
+                var path = this.findPath(cur, f(cur.x, cur.y));
+                this.xorPath(path);
+                if (path.area > turdSize) {
+                    r.push(path);
+                }
             }
-            if (x < path.minX) {
-                path.minX = x;
+            return r;
+        };
+        PathListBuilder.prototype.findNext = function (prev) {
+            var bm = this.bm;
+            var width = bm.width, height = bm.height;
+            for (var x = prev.x; x < width; ++x) {
+                if (bm.at(x, prev.y)) {
+                    return new Point(x, prev.y);
+                }
             }
-            if (y > path.maxY) {
-                path.maxY = y;
+            for (var y = prev.y + 1; y < height; ++y) {
+                for (var x = 0; x < width; ++x) {
+                    if (bm.at(x, y)) {
+                        return new Point(x, y);
+                    }
+                }
             }
-            if (y < path.minY) {
-                path.minY = y;
+            return null;
+        };
+        PathListBuilder.prototype.majority = function (x, y) {
+            var bm = this.bm;
+            for (var i = 2; i < 5; ++i) {
+                var ct = 0;
+                for (var a = -i + 1; a <= i - 1; ++a) {
+                    ct += bm.at(x + a, y + i - 1) ? 1 : -1;
+                    ct += bm.at(x + i - 1, y + a - 1) ? 1 : -1;
+                    ct += bm.at(x + a - 1, y - i) ? 1 : -1;
+                    ct += bm.at(x - i, y + a) ? 1 : -1;
+                }
+                if (ct > 0) {
+                    return 1;
+                }
+                else if (ct < 0) {
+                    return 0;
+                }
             }
-            ++path.len;
-            x += dirx;
-            y += diry;
-            path.area -= x * diry;
-            if (x === point.x && y === point.y) {
-                break;
-            }
-            var l = bm1.at(x + (dirx + diry - 1) / 2, y + (diry - dirx - 1) / 2);
-            var r = bm1.at(x + (dirx - diry - 1) / 2, y + (diry + dirx - 1) / 2);
-            if (r && !l) {
-                if (turnPolicy === 0 /* Right */ ||
-                    (turnPolicy === 1 /* Black */ && path.sign === '+') ||
-                    (turnPolicy === 2 /* White */ && path.sign === '-') ||
-                    (turnPolicy === 3 /* Majority */ && majority(bm1, x, y)) ||
-                    (turnPolicy === 4 /* Minority */ && !majority(bm1, x, y))) {
+            return 0;
+        };
+        PathListBuilder.prototype.findPath = function (point, signIsPlus) {
+            var bm = this.bm;
+            var turnPolicy = this.policy;
+            var path = new Path();
+            var x = point.x, y = point.y, dirx = 0, diry = 1, tmp;
+            path.signIsPlus = signIsPlus;
+            while (1) {
+                path.pt.push(new Point(x, y));
+                if (x > path.maxX) {
+                    path.maxX = x;
+                }
+                if (x < path.minX) {
+                    path.minX = x;
+                }
+                if (y > path.maxY) {
+                    path.maxY = y;
+                }
+                if (y < path.minY) {
+                    path.minY = y;
+                }
+                ++path.len;
+                x += dirx;
+                y += diry;
+                path.area -= x * diry;
+                if (x === point.x && y === point.y) {
+                    break;
+                }
+                var l = bm.at(x + (dirx + diry - 1) / 2, y + (diry - dirx - 1) / 2);
+                var r = bm.at(x + (dirx - diry - 1) / 2, y + (diry + dirx - 1) / 2);
+                if (r && !l) {
+                    if (turnPolicy === 0 /* Right */ ||
+                        (turnPolicy === 1 /* Black */ && path.signIsPlus) ||
+                        (turnPolicy === 2 /* White */ && !path.signIsPlus) ||
+                        (turnPolicy === 3 /* Majority */ && this.majority(x, y)) ||
+                        (turnPolicy === 4 /* Minority */ && !this.majority(x, y))) {
+                        tmp = dirx;
+                        dirx = -diry;
+                        diry = tmp;
+                    }
+                    else {
+                        tmp = dirx;
+                        dirx = diry;
+                        diry = -tmp;
+                    }
+                }
+                else if (r) {
                     tmp = dirx;
                     dirx = -diry;
                     diry = tmp;
                 }
-                else {
+                else if (!l) {
                     tmp = dirx;
                     dirx = diry;
                     diry = -tmp;
                 }
             }
-            else if (r) {
-                tmp = dirx;
-                dirx = -diry;
-                diry = tmp;
-            }
-            else if (!l) {
-                tmp = dirx;
-                dirx = diry;
-                diry = -tmp;
-            }
-        }
-        return path;
-    }
-    function xorPath(bm1, path) {
-        var y1 = path.pt[0].y;
-        var len = path.len;
-        for (var i = 1; i < len; i++) {
-            var x = path.pt[i].x;
-            var y = path.pt[i].y;
-            if (y !== y1) {
-                var minY = y1 < y ? y1 : y;
-                var maxX = path.maxX;
-                for (var j = x; j < maxX; j++) {
-                    bm1.flip(j, minY);
+            return path;
+        };
+        PathListBuilder.prototype.xorPath = function (path) {
+            var bm = this.bm;
+            var y1 = path.pt[0].y;
+            var len = path.len;
+            for (var i = 1; i < len; ++i) {
+                var x = path.pt[i].x;
+                var y = path.pt[i].y;
+                if (y !== y1) {
+                    var minY = y1 < y ? y1 : y;
+                    var maxX = path.maxX;
+                    for (var j = x; j < maxX; ++j) {
+                        bm.flip(j, minY);
+                    }
+                    y1 = y;
                 }
-                y1 = y;
             }
-        }
-    }
+        };
+        return PathListBuilder;
+    }());
     // --------
     function mod(a, n) {
         return a >= n ? a % n : a >= 0 ? a : n - 1 - (-1 - a) % n;
@@ -318,8 +368,8 @@ var Potrace;
     function quadform(Q, w) {
         var v = [w.x, w.y, 1];
         var sum = 0.0;
-        for (var i = 0; i < 3; i++) {
-            for (var j = 0; j < 3; j++) {
+        for (var i = 0; i < 3; ++i) {
+            for (var j = 0; j < 3; ++j) {
                 sum += v[i] * Q.at(i, j) * v[j];
             }
         }
@@ -403,7 +453,7 @@ var Potrace;
         path.sums = [];
         var s = path.sums;
         s.push(new Sum(0, 0, 0, 0, 0));
-        for (var i = 0; i < path.len; i++) {
+        for (var i = 0; i < path.len; ++i) {
             var x = path.pt[i].x - path.x0;
             var y = path.pt[i].y - path.y0;
             s.push(new Sum(s[i].x + x, s[i].y + y, s[i].xy + x * y, s[i].x2 + x * x, s[i].y2 + y * y));
@@ -413,29 +463,29 @@ var Potrace;
         var n = path.len, pt = path.pt;
         var dir, pivk = new Array(n), nc = new Array(n), ct = new Array(4);
         path.lon = new Array(n);
-        var constraint = [new Point(0, 0), new Point(0, 0)], cur = new Point(0, 0), off = new Point(0, 0), dk = new Point(0, 0), foundk;
-        for (var i = n - 1, k = 0; i >= 0; i--) {
+        var constraint = [new Point(0, 0), new Point(0, 0)], cur = new Point(0, 0), off = new Point(0, 0), dk = new Point(0, 0);
+        for (var i = n - 1, k = 0; i >= 0; --i) {
             if (pt[i].x !== pt[k].x && pt[i].y !== pt[k].y) {
                 k = i + 1;
             }
             nc[i] = k;
         }
-        for (var i = n - 1; i >= 0; i--) {
+        for (var i = n - 1; i >= 0; --i) {
             ct[0] = ct[1] = ct[2] = ct[3] = 0;
-            dir = (3 + 3 * (pt[mod(i + 1, n)].x - pt[i].x) +
-                (pt[mod(i + 1, n)].y - pt[i].y)) / 2;
-            ct[dir]++;
+            dir = (3 + 3 * (pt[mod(i + 1, n)].x - pt[i].x) + (pt[mod(i + 1, n)].y - pt[i].y)) / 2;
+            ++ct[dir];
             constraint[0].x = 0;
             constraint[0].y = 0;
             constraint[1].x = 0;
             constraint[1].y = 0;
             var k = nc[i];
             var k1 = i;
+            var foundk = void 0;
             while (1) {
                 foundk = false;
                 dir = (3 + 3 * sign(pt[k].x - pt[k1].x) +
                     sign(pt[k].y - pt[k1].y)) / 2;
-                ct[dir]++;
+                ++ct[dir];
                 if (ct[0] && ct[1] && ct[2] && ct[3]) {
                     pivk[i] = k1;
                     foundk = true;
@@ -487,13 +537,13 @@ var Potrace;
         }
         var j = pivk[n - 1];
         path.lon[n - 1] = j;
-        for (var i = n - 2; i >= 0; i--) {
+        for (var i = n - 2; i >= 0; --i) {
             if (cyclic(i + 1, pivk[i], j)) {
                 j = pivk[i];
             }
             path.lon[i] = j;
         }
-        for (var i = n - 1; cyclic(mod(i + 1, n), j, path.lon[i]); i--) {
+        for (var i = n - 1; cyclic(mod(i + 1, n), j, path.lon[i]); --i) {
             path.lon[i] = j;
         }
     }
@@ -539,7 +589,7 @@ var Potrace;
         var clip1 = new Array(n + 1);
         var seg0 = new Array(n + 1);
         var seg1 = new Array(n + 1);
-        for (var i_2 = 0; i_2 < n; i_2++) {
+        for (var i_2 = 0; i_2 < n; ++i_2) {
             var c = mod(path.lon[mod(i_2 - 1, n)] - 1, n);
             if (c === i_2) {
                 c = mod(i_2 + 1, n);
@@ -551,30 +601,30 @@ var Potrace;
                 clip0[i_2] = c;
             }
         }
-        for (var i_3 = 0, j_2 = 1; i_3 < n; i_3++) {
+        for (var i_3 = 0, j_2 = 1; i_3 < n; ++i_3) {
             while (j_2 <= clip0[i_3]) {
                 clip1[j_2] = i_3;
-                j_2++;
+                ++j_2;
             }
         }
         var j = 0;
-        for (var i_4 = 0; i_4 < n; j++) {
+        for (var i_4 = 0; i_4 < n; ++j) {
             seg0[j] = i_4;
             i_4 = clip0[i_4];
         }
         seg0[j] = n;
         var m = j;
         var i = n;
-        for (var j_3 = m; j_3 > 0; j_3--) {
+        for (var j_3 = m; j_3 > 0; --j_3) {
             seg1[j_3] = i;
             i = clip1[i];
         }
         seg1[0] = 0;
         pen[0] = 0;
-        for (var j_4 = 1; j_4 <= m; j_4++) {
-            for (var i_5 = seg1[j_4]; i_5 <= seg0[j_4]; i_5++) {
+        for (var j_4 = 1; j_4 <= m; ++j_4) {
+            for (var i_5 = seg1[j_4]; i_5 <= seg0[j_4]; ++i_5) {
                 var best = -1;
-                for (var k = seg0[j_4 - 1]; k >= clip1[i_5]; k--) {
+                for (var k = seg0[j_4 - 1]; k >= clip1[i_5]; --k) {
                     var thispen = penalty3(path, k, i_5) + pen[k];
                     if (best < 0 || thispen < best) {
                         prev[i_5] = k;
@@ -586,7 +636,7 @@ var Potrace;
         }
         path.m = m;
         path.po = new Array(m);
-        for (var i_6 = n, j_5 = m - 1; i_6 > 0; j_5--) {
+        for (var i_6 = n, j_5 = m - 1; i_6 > 0; --j_5) {
             i_6 = prev[i_6];
             path.po[j_5] = i_6;
         }
@@ -1002,40 +1052,28 @@ var Potrace;
     }
     // --------
     function fromImage(src) {
-        return new Potrace(Bitmap.createFromImage(src));
+        return new Potrace(PathList.fromBitmap(Bitmap.createFromImage(src), 4 /* Minority */, 2));
     }
     Potrace_1.fromImage = fromImage;
     function fromFunction(f, width, height) {
-        return new Potrace(Bitmap.createFromFunction(f, width, height));
+        return new Potrace(PathList.fromFunction(f, width, height, 4 /* Minority */, 2));
     }
     Potrace_1.fromFunction = fromFunction;
     var Potrace = (function () {
-        function Potrace(bm) {
+        function Potrace(pathlist) {
+            this.pathlist = pathlist;
             this.turnPolicy = 4 /* Minority */;
             this.turdSize = 2;
             this.optCurve = true;
             this.alphaMax = 1;
             this.optTolerance = 0.2;
-            // bitmap to pathlist
-            var pathlist = new PathList(bm.width, bm.height);
-            this.pathlist = pathlist;
-            var bm1 = bm.copy();
-            var currentPoint = new Point(0, 0);
-            while (currentPoint = bm1.findNext(currentPoint)) {
-                var path = findPath(bm, this.turnPolicy, bm1, currentPoint);
-                xorPath(bm1, path);
-                if (path.area > this.turdSize) {
-                    pathlist.push(path);
-                }
-            }
-            // process path
             for (var i = 0; i < pathlist.length; ++i) {
                 var path = pathlist[i];
                 calcSums(path);
                 calcLon(path);
                 bestPolygon(path);
                 adjustVertices(path);
-                if (path.sign === '-') {
+                if (!path.signIsPlus) {
                     reverse(path);
                 }
                 smooth(path, this.alphaMax);

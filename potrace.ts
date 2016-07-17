@@ -33,6 +33,14 @@
  */
 
 module Potrace {
+   const enum TurnPolicy {
+      Right,
+      Black,
+      White,
+      Majority,
+      Minority
+   }
+
    class Point {
       constructor(public x: number, public y: number) { }
       public copy(): Point {
@@ -212,7 +220,7 @@ module Potrace {
       return 0;
    }
 
-   function findPath(bm: Bitmap, infoTurnpolicy: string, bm1: Bitmap, point: Point): Path {
+   function findPath(bm: Bitmap, turnPolicy: TurnPolicy, bm1: Bitmap, point: Point): Path {
       const path = new Path();
       let x = point.x, y = point.y,
          dirx = 0, diry = 1, tmp: number;
@@ -247,11 +255,11 @@ module Potrace {
          const r = bm1.at(x + (dirx - diry - 1) / 2, y + (diry + dirx - 1) / 2);
 
          if (r && !l) {
-            if (infoTurnpolicy === 'right' ||
-               (infoTurnpolicy === 'black' && path.sign === '+') ||
-               (infoTurnpolicy === 'white' && path.sign === '-') ||
-               (infoTurnpolicy === 'majority' && majority(bm1, x, y)) ||
-               (infoTurnpolicy === 'minority' && !majority(bm1, x, y))) {
+            if (turnPolicy === TurnPolicy.Right ||
+               (turnPolicy === TurnPolicy.Black && path.sign === '+') ||
+               (turnPolicy === TurnPolicy.White && path.sign === '-') ||
+               (turnPolicy === TurnPolicy.Majority && majority(bm1, x, y)) ||
+               (turnPolicy === TurnPolicy.Minority && !majority(bm1, x, y))) {
                tmp = dirx;
                dirx = -diry;
                diry = tmp;
@@ -1109,7 +1117,7 @@ module Potrace {
    class Potrace {
       private pathlist: PathList;
 
-      public turnPolicy = 'minority';
+      public turnPolicy = TurnPolicy.Minority;
       public turdSize = 2;
       public optCurve = true;
       public alphaMax = 1;

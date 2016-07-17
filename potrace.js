@@ -38,6 +38,14 @@ var __extends = (this && this.__extends) || function (d, b) {
 };
 var Potrace;
 (function (Potrace_1) {
+    var TurnPolicy;
+    (function (TurnPolicy) {
+        TurnPolicy[TurnPolicy["Right"] = 0] = "Right";
+        TurnPolicy[TurnPolicy["Black"] = 1] = "Black";
+        TurnPolicy[TurnPolicy["White"] = 2] = "White";
+        TurnPolicy[TurnPolicy["Majority"] = 3] = "Majority";
+        TurnPolicy[TurnPolicy["Minority"] = 4] = "Minority";
+    })(TurnPolicy || (TurnPolicy = {}));
     var Point = (function () {
         function Point(x, y) {
             this.x = x;
@@ -217,7 +225,7 @@ var Potrace;
         }
         return 0;
     }
-    function findPath(bm, infoTurnpolicy, bm1, point) {
+    function findPath(bm, turnPolicy, bm1, point) {
         var path = new Path();
         var x = point.x, y = point.y, dirx = 0, diry = 1, tmp;
         path.sign = bm.at(x, y) ? '+' : '-';
@@ -245,11 +253,11 @@ var Potrace;
             var l = bm1.at(x + (dirx + diry - 1) / 2, y + (diry - dirx - 1) / 2);
             var r = bm1.at(x + (dirx - diry - 1) / 2, y + (diry + dirx - 1) / 2);
             if (r && !l) {
-                if (infoTurnpolicy === 'right' ||
-                    (infoTurnpolicy === 'black' && path.sign === '+') ||
-                    (infoTurnpolicy === 'white' && path.sign === '-') ||
-                    (infoTurnpolicy === 'majority' && majority(bm1, x, y)) ||
-                    (infoTurnpolicy === 'minority' && !majority(bm1, x, y))) {
+                if (turnPolicy === 0 /* Right */ ||
+                    (turnPolicy === 1 /* Black */ && path.sign === '+') ||
+                    (turnPolicy === 2 /* White */ && path.sign === '-') ||
+                    (turnPolicy === 3 /* Majority */ && majority(bm1, x, y)) ||
+                    (turnPolicy === 4 /* Minority */ && !majority(bm1, x, y))) {
                     tmp = dirx;
                     dirx = -diry;
                     diry = tmp;
@@ -1003,7 +1011,7 @@ var Potrace;
     Potrace_1.fromFunction = fromFunction;
     var Potrace = (function () {
         function Potrace(bm) {
-            this.turnPolicy = 'minority';
+            this.turnPolicy = 4 /* Minority */;
             this.turdSize = 2;
             this.optCurve = true;
             this.alphaMax = 1;

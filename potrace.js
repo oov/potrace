@@ -44,28 +44,53 @@ var Potrace;
         return Point;
     }());
     var Bitmap = (function () {
-        function Bitmap(w, h) {
-            this.w = w;
-            this.h = h;
-            this.size = w * h;
-            this.data = new Int8Array(this.size);
+        function Bitmap(width, height) {
+            this.width = width;
+            this.height = height;
+            this.data = new Int8Array(width * height);
         }
         Bitmap.prototype.at = function (x, y) {
-            return (x >= 0 && x < this.w && y >= 0 && y < this.h) &&
-                this.data[this.w * y + x] === 1;
-        };
-        Bitmap.prototype.index = function (i) {
-            var y = Math.floor(i / this.w);
-            return new Point(i - y * this.w, y);
+            return x >= 0 && x < this.width && y >= 0 && y < this.height &&
+                this.data[this.width * y + x] === 1;
         };
         Bitmap.prototype.flip = function (x, y) {
-            var i = this.w * y + x;
+            var i = this.width * y + x;
             this.data[i] = this.data[i] ? 0 : 1;
         };
         Bitmap.prototype.copy = function () {
-            var bm = new Bitmap(this.w, this.h);
-            for (var i = 0; i < this.size; ++i) {
+            var bm = new Bitmap(this.width, this.height);
+            for (var i = 0, len = this.data.length; i < len; ++i) {
                 bm.data[i] = this.data[i];
+            }
+            return bm;
+        };
+        Bitmap.prototype.findNext = function (point) {
+            for (var i = this.width * point.y + point.x, len = this.data.length; i < len; ++i) {
+                if (this.data[i]) {
+                    var y = Math.floor(i / this.width);
+                    return new Point(i - y * this.width, y);
+                }
+            }
+            return null;
+        };
+        Bitmap.createFromImage = function (src) {
+            var canvas = document.createElement('canvas');
+            canvas.width = src.width;
+            canvas.height = src.height;
+            canvas.getContext('2d').drawImage(src, 0, 0);
+            var bm = new Bitmap(canvas.width, canvas.height);
+            var data = canvas.getContext('2d').getImageData(0, 0, bm.width, bm.height).data;
+            for (var i = 0, j = 0, l = data.length; i < l; i += 4, ++j) {
+                bm.data[j] = 0.2126 * data[i] + 0.7153 * data[i + 1] + 0.0721 * data[i + 2] < 128 ? 1 : 0;
+            }
+            return bm;
+        };
+        Bitmap.createFromFunction = function (f, width, height) {
+            var bm = new Bitmap(width, height);
+            for (var i = 0, y = 0; y < height; ++y) {
+                for (var x = 0; x < width; ++i, ++x) {
+                    bm.data[i] = f(x, y) ? 1 : 0;
+                }
             }
             return bm;
         };
@@ -126,13 +151,6 @@ var Potrace;
         }
         return Opti;
     }());
-    function findNext(bm1, point) {
-        var i = bm1.w * point.y + point.x;
-        while (i < bm1.size && bm1.data[i] !== 1) {
-            i++;
-        }
-        return i < bm1.size && bm1.index(i);
-    }
     function majority(bm1, x, y) {
         for (var i = 2; i < 5; i++) {
             var ct = 0;
@@ -927,21 +945,6 @@ var Potrace;
         path.curve = ocurve;
     }
     // --------
-    function makeBitmap(src) {
-        var canvas = document.createElement('canvas');
-        canvas.width = src.width;
-        canvas.height = src.height;
-        canvas.getContext('2d').drawImage(src, 0, 0);
-        var bm = new Bitmap(canvas.width, canvas.height);
-        var data = canvas.getContext('2d').getImageData(0, 0, bm.w, bm.h).data;
-        var l = data.length;
-        for (var i = 0, j = 0, color = void 0; i < l; i += 4, ++j) {
-            color = 0.2126 * data[i] + 0.7153 * data[i + 1] +
-                0.0721 * data[i + 2];
-            bm.data[j] = (color < 128 ? 1 : 0);
-        }
-        return bm;
-    }
     function convertSVG(width, height, pathlist, scale, opt_type) {
         var w = width * scale, h = height * scale;
         var svg = [("<svg id=\"svg\" version=\"1.1\" width=\"" + w + "\" height=\"" + h + "\" xmlns=\"http://www.w3.org/2000/svg\">")];
@@ -976,23 +979,29 @@ var Potrace;
         svg.push('</svg>');
         return svg.join('');
     }
+    function fromImage(src) {
+        return new Potrace(Bitmap.createFromImage(src));
+    }
+    Potrace_1.fromImage = fromImage;
+    function fromFunction(f, width, height) {
+        return new Potrace(Bitmap.createFromFunction(f, width, height));
+    }
+    Potrace_1.fromFunction = fromFunction;
     var Potrace = (function () {
-        function Potrace(src) {
+        function Potrace(bm) {
             this.pathlist = [];
-            this.img = new Image();
             this.turnPolicy = 'minority';
             this.turdSize = 2;
             this.optCurve = true;
             this.alphaMax = 1;
             this.optTolerance = 0.2;
-            var bm = makeBitmap(src);
-            this.width = bm.w;
-            this.height = bm.h;
+            this.width = bm.width;
+            this.height = bm.height;
             // bitmap to pathlist
             var pathlist = this.pathlist;
             var bm1 = bm.copy();
             var currentPoint = new Point(0, 0);
-            while (currentPoint = findNext(bm1, currentPoint)) {
+            while (currentPoint = bm1.findNext(currentPoint)) {
                 var path = findPath(bm, this.turnPolicy, bm1, currentPoint);
                 xorPath(bm1, path);
                 if (path.area > this.turdSize) {
@@ -1020,5 +1029,4 @@ var Potrace;
         };
         return Potrace;
     }());
-    Potrace_1.Potrace = Potrace;
 })(Potrace || (Potrace = {}));

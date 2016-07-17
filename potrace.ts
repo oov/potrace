@@ -41,28 +41,58 @@ module Potrace {
    }
 
    class Bitmap {
-      public size: number;
-      public data: Int8Array;
-      constructor(public w: number, public h: number) {
-         this.size = w * h;
-         this.data = new Int8Array(this.size);
+      private data: Int8Array;
+      private constructor(public width: number, public height: number) {
+         this.data = new Int8Array(width * height);
       }
+
       public at(x: number, y: number): boolean {
-         return (x >= 0 && x < this.w && y >= 0 && y < this.h) &&
-            this.data[this.w * y + x] === 1;
+         return x >= 0 && x < this.width && y >= 0 && y < this.height &&
+            this.data[this.width * y + x] === 1;
       }
-      public index(i: number): Point {
-         const y = Math.floor(i / this.w);
-         return new Point(i - y * this.w, y);
-      }
+
       public flip(x: number, y: number): void {
-         const i = this.w * y + x;
+         const i = this.width * y + x;
          this.data[i] = this.data[i] ? 0 : 1;
       }
+
       public copy(): Bitmap {
-         const bm = new Bitmap(this.w, this.h);
-         for (let i = 0; i < this.size; ++i) {
+         const bm = new Bitmap(this.width, this.height);
+         for (let i = 0, len = this.data.length; i < len; ++i) {
             bm.data[i] = this.data[i];
+         }
+         return bm;
+      }
+
+      public findNext(point: Point): Point {
+         for (let i = this.width * point.y + point.x, len = this.data.length; i < len; ++i) {
+            if (this.data[i]) {
+               const y = Math.floor(i / this.width);
+               return new Point(i - y * this.width, y);
+            }
+         }
+         return null;
+      }
+
+      public static createFromImage(src: HTMLImageElement | HTMLCanvasElement): Bitmap {
+         const canvas = document.createElement('canvas');
+         canvas.width = src.width;
+         canvas.height = src.height;
+         canvas.getContext('2d').drawImage(src, 0, 0);
+         const bm = new Bitmap(canvas.width, canvas.height);
+         const data = canvas.getContext('2d').getImageData(0, 0, bm.width, bm.height).data;
+         for (let i = 0, j = 0, l = data.length; i < l; i += 4, ++j) {
+            bm.data[j] = 0.2126 * data[i] + 0.7153 * data[i + 1] + 0.0721 * data[i + 2] < 128 ? 1 : 0;
+         }
+         return bm;
+      }
+
+      public static createFromFunction(f: (x: number, y: number) => boolean, width: number, height: number): Bitmap {
+         const bm = new Bitmap(width, height);
+         for (let i = 0, y = 0; y < height; ++y) {
+            for (let x = 0; x < width; ++i, ++x) {
+               bm.data[i] = f(x, y) ? 1 : 0;
+            }
          }
          return bm;
       }
@@ -122,14 +152,6 @@ module Potrace {
       public t = 0;
       public s = 0;
       public alpha = 0;
-   }
-
-   function findNext(bm1: Bitmap, point: Point): Point {
-      let i = bm1.w * point.y + point.x;
-      while (i < bm1.size && bm1.data[i] !== 1) {
-         i++;
-      }
-      return i < bm1.size && bm1.index(i);
    }
 
    function majority(bm1: Bitmap, x: number, y: number): number {
@@ -1036,22 +1058,6 @@ module Potrace {
 
    // --------
 
-   function makeBitmap(src: HTMLImageElement | HTMLCanvasElement): Bitmap {
-      const canvas = document.createElement('canvas');
-      canvas.width = src.width;
-      canvas.height = src.height;
-      canvas.getContext('2d').drawImage(src, 0, 0);
-      const bm = new Bitmap(canvas.width, canvas.height);
-      const data = canvas.getContext('2d').getImageData(0, 0, bm.w, bm.h).data;
-      const l = data.length;
-      for (let i = 0, j = 0, color: number; i < l; i += 4, ++j) {
-         color = 0.2126 * data[i] + 0.7153 * data[i + 1] +
-            0.0721 * data[i + 2];
-         bm.data[j] = (color < 128 ? 1 : 0);
-      }
-      return bm;
-   }
-
    function convertSVG(width: number, height: number, pathlist: Path[], scale: number, opt_type: string): string {
       const w = width * scale, h = height * scale;
       let svg = [`<svg id="svg" version="1.1" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">`];
@@ -1086,29 +1092,35 @@ module Potrace {
       return svg.join('');
    }
 
-   export class Potrace {
+   export function fromImage(src: HTMLImageElement | HTMLCanvasElement): Potrace {
+      return new Potrace(Bitmap.createFromImage(src));
+   }
+
+   export function fromFunction(f: (x: number, y: number) => boolean, width: number, height: number): Potrace {
+      return new Potrace(Bitmap.createFromFunction(f, width, height));
+   }
+
+   class Potrace {
       private pathlist: Path[] = [];
 
       private width: number;
       private height: number;
 
-      public img = new Image();
       public turnPolicy = 'minority';
       public turdSize = 2;
       public optCurve = true;
       public alphaMax = 1;
       public optTolerance = 0.2;
 
-      constructor(src: HTMLImageElement | HTMLCanvasElement) {
-         const bm = makeBitmap(src);
-         this.width = bm.w;
-         this.height = bm.h;
+      constructor(bm: Bitmap) {
+         this.width = bm.width;
+         this.height = bm.height;
 
          // bitmap to pathlist
          const pathlist = this.pathlist;
          const bm1 = bm.copy();
          let currentPoint = new Point(0, 0);
-         while (currentPoint = findNext(bm1, currentPoint)) {
+         while (currentPoint = bm1.findNext(currentPoint)) {
             const path = findPath(bm, this.turnPolicy, bm1, currentPoint);
             xorPath(bm1, path);
             if (path.area > this.turdSize) {

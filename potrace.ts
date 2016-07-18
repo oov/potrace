@@ -1,11 +1,12 @@
-/* Copyright (C) 2001-2013 Peter Selinger.
+/*
+ * TypeScript port of Potrace (http://potrace.sourceforge.net).
+ * https://github.com/oov/potrace
+ *
+ * LICENSE: GPL v2
+ *
+ * Copyright (C) 2001-2013 Peter Selinger.
  * Copyright (C) 2014-2016 kilobtye.
  * Copyright (C) 2016 Oov.
- *
- * TypeScript port of Potrace (http://potrace.sourceforge.net).
- *
- * Licensed under the GPL
-
  */
 
 module potrace {

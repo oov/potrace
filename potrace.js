@@ -818,13 +818,7 @@ var Potrace;
             this.width = width;
             this.height = height;
         }
-        PathList.prototype.optimize = function (alphaMax, optCurve, optTolerance) {
-            for (var i = 0; i < this.length; ++i) {
-                this[i].makeCurve();
-                this[i].optimize(alphaMax, optCurve, optTolerance);
-            }
-        };
-        PathList.prototype.toSVG = function (scale, optType) {
+        PathList.prototype.toSVG = function (scale, stroke) {
             var w = this.width * scale, h = this.height * scale;
             var svg = [("<svg id=\"svg\" version=\"1.1\" width=\"" + w + "\" height=\"" + h + "\" xmlns=\"http://www.w3.org/2000/svg\">")];
             svg.push('<path d="');
@@ -849,7 +843,7 @@ var Potrace;
                     }
                 }
             }
-            if (optType === 'curve') {
+            if (stroke) {
                 svg.push('" stroke="black" fill="none"/>');
             }
             else {
@@ -902,12 +896,22 @@ var Potrace;
                 }
             }
         };
-        PathList.fromFunction = function (f, width, height, policy, turdSize) {
-            var bm = Bitmap.createFromFunction(f, width, height);
-            return new PathListBuilder(bm, policy).trace(f, turdSize);
+        PathList.optimize = function (pl, alphaMax, optCurve, optTolerance) {
+            for (var i = 0; i < pl.length; ++i) {
+                pl[i].makeCurve();
+                pl[i].optimize(alphaMax, optCurve, optTolerance);
+            }
         };
-        PathList.fromBitmap = function (src, policy, turdSize) {
-            return new PathListBuilder(src.copy(), policy).trace(function (x, y) { return src.at(x, y); }, turdSize);
+        PathList.fromFunction = function (f, width, height, policy, turdSize, alphaMax, optCurve, optTolerance) {
+            var bm = Bitmap.createFromFunction(f, width, height);
+            var pl = new PathListBuilder(bm, policy).trace(f, turdSize);
+            PathList.optimize(pl, alphaMax, optCurve, optTolerance);
+            return pl;
+        };
+        PathList.fromBitmap = function (src, policy, turdSize, alphaMax, optCurve, optTolerance) {
+            var pl = new PathListBuilder(src.copy(), policy).trace(function (x, y) { return src.at(x, y); }, turdSize);
+            PathList.optimize(pl, alphaMax, optCurve, optTolerance);
+            return pl;
         };
         return PathList;
     }(Array));
@@ -1131,18 +1135,13 @@ var Potrace;
         }
     }
     function fromImage(src, opt) {
-        var bmp = Bitmap.createFromImage(src);
         opt = opt || {};
-        var pl = PathList.fromBitmap(bmp, 'turnPolicy' in opt ? opt.turnPolicy : 4 /* Minority */, 'turdSize' in opt ? opt.turdSize : 2);
-        pl.optimize('alphaMax' in opt ? opt.alphaMax : 1, 'optCurve' in opt ? opt.optCurve : true, 'optTolerance' in opt ? opt.optTolerance : 0.2);
-        return pl;
+        return PathList.fromBitmap(Bitmap.createFromImage(src), 'turnPolicy' in opt ? opt.turnPolicy : 4 /* Minority */, 'turdSize' in opt ? opt.turdSize : 2, 'alphaMax' in opt ? opt.alphaMax : 1, 'optCurve' in opt ? opt.optCurve : true, 'optTolerance' in opt ? opt.optTolerance : 0.2);
     }
     Potrace.fromImage = fromImage;
     function fromFunction(f, width, height, opt) {
         opt = opt || {};
-        var pl = PathList.fromFunction(f, width, height, 'turnPolicy' in opt ? opt.turnPolicy : 4 /* Minority */, 'turdSize' in opt ? opt.turdSize : 2);
-        pl.optimize('alphaMax' in opt ? opt.alphaMax : 1, 'optCurve' in opt ? opt.optCurve : true, 'optTolerance' in opt ? opt.optTolerance : 0.2);
-        return pl;
+        return PathList.fromFunction(f, width, height, 'turnPolicy' in opt ? opt.turnPolicy : 4 /* Minority */, 'turdSize' in opt ? opt.turdSize : 2, 'alphaMax' in opt ? opt.alphaMax : 1, 'optCurve' in opt ? opt.optCurve : true, 'optTolerance' in opt ? opt.optTolerance : 0.2);
     }
     Potrace.fromFunction = fromFunction;
 })(Potrace || (Potrace = {}));

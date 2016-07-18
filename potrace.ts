@@ -894,14 +894,7 @@ module Potrace {
          super();
       }
 
-      public optimize(alphaMax: number, optCurve: boolean, optTolerance: number): void {
-         for (let i = 0; i < this.length; ++i) {
-            this[i].makeCurve();
-            this[i].optimize(alphaMax, optCurve, optTolerance);
-         }
-      }
-
-      public toSVG(scale: number, optType: string): string {
+      public toSVG(scale: number, stroke?: boolean): string {
          const w = this.width * scale, h = this.height * scale;
          let svg = [`<svg id="svg" version="1.1" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">`];
          svg.push('<path d="');
@@ -925,7 +918,7 @@ module Potrace {
                }
             }
          }
-         if (optType === 'curve') {
+         if (stroke) {
             svg.push('" stroke="black" fill="none"/>');
          } else {
             svg.push('" stroke="none" fill="black" fill-rule="evenodd"/>');
@@ -980,14 +973,27 @@ module Potrace {
          }
       }
 
-      public static fromFunction(f: (x: number, y: number) => boolean,
-         width: number, height: number, policy: TurnPolicy, turdSize: number): PathList {
-         const bm = Bitmap.createFromFunction(f, width, height);
-         return new PathListBuilder(bm, policy).trace(f, turdSize);
+      private static optimize(pl: PathList, alphaMax: number, optCurve: boolean, optTolerance: number): void {
+         for (let i = 0; i < pl.length; ++i) {
+            pl[i].makeCurve();
+            pl[i].optimize(alphaMax, optCurve, optTolerance);
+         }
       }
 
-      public static fromBitmap(src: Bitmap, policy: TurnPolicy, turdSize: number): PathList {
-         return new PathListBuilder(src.copy(), policy).trace((x, y) => src.at(x, y), turdSize);
+      public static fromFunction(f: (x: number, y: number) => boolean,
+         width: number, height: number, policy: TurnPolicy, turdSize: number,
+         alphaMax: number, optCurve: boolean, optTolerance: number): PathList {
+         const bm = Bitmap.createFromFunction(f, width, height);
+         const pl = new PathListBuilder(bm, policy).trace(f, turdSize);
+         PathList.optimize(pl, alphaMax, optCurve, optTolerance);
+         return pl;
+      }
+
+      public static fromBitmap(src: Bitmap, policy: TurnPolicy, turdSize: number,
+         alphaMax: number, optCurve: boolean, optTolerance: number): PathList {
+         const pl = new PathListBuilder(src.copy(), policy).trace((x, y) => src.at(x, y), turdSize);
+         PathList.optimize(pl, alphaMax, optCurve, optTolerance);
+         return pl;
       }
    }
 
@@ -1245,31 +1251,24 @@ module Potrace {
    }
 
    export function fromImage(src: HTMLImageElement | HTMLCanvasElement, opt: Options): PathList {
-      const bmp = Bitmap.createFromImage(src);
       opt = opt || {};
-      const pl = PathList.fromBitmap(bmp,
+      return PathList.fromBitmap(Bitmap.createFromImage(src),
          'turnPolicy' in opt ? opt.turnPolicy : TurnPolicy.Minority,
-         'turdSize' in opt ? opt.turdSize : 2
-      );
-      pl.optimize(
+         'turdSize' in opt ? opt.turdSize : 2,
          'alphaMax' in opt ? opt.alphaMax : 1,
          'optCurve' in opt ? opt.optCurve : true,
          'optTolerance' in opt ? opt.optTolerance : 0.2
       );
-      return pl;
    }
 
    export function fromFunction(f: (x: number, y: number) => boolean, width: number, height: number, opt: Options): PathList {
       opt = opt || {};
-      const pl = PathList.fromFunction(f, width, height,
+      return PathList.fromFunction(f, width, height,
          'turnPolicy' in opt ? opt.turnPolicy : TurnPolicy.Minority,
-         'turdSize' in opt ? opt.turdSize : 2
-      );
-      pl.optimize(
+         'turdSize' in opt ? opt.turdSize : 2,
          'alphaMax' in opt ? opt.alphaMax : 1,
          'optCurve' in opt ? opt.optCurve : true,
          'optTolerance' in opt ? opt.optTolerance : 0.2
       );
-      return pl;
    }
 }

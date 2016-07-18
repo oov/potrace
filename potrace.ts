@@ -8,7 +8,7 @@
 
  */
 
-module Potrace {
+module potrace {
    export const enum TurnPolicy {
       Right,
       Black,

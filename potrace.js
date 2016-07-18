@@ -12,16 +12,16 @@ var __extends = (this && this.__extends) || function (d, b) {
     function __() { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
-var Potrace;
-(function (Potrace) {
+var potrace;
+(function (potrace) {
     (function (TurnPolicy) {
         TurnPolicy[TurnPolicy["Right"] = 0] = "Right";
         TurnPolicy[TurnPolicy["Black"] = 1] = "Black";
         TurnPolicy[TurnPolicy["White"] = 2] = "White";
         TurnPolicy[TurnPolicy["Majority"] = 3] = "Majority";
         TurnPolicy[TurnPolicy["Minority"] = 4] = "Minority";
-    })(Potrace.TurnPolicy || (Potrace.TurnPolicy = {}));
-    var TurnPolicy = Potrace.TurnPolicy;
+    })(potrace.TurnPolicy || (potrace.TurnPolicy = {}));
+    var TurnPolicy = potrace.TurnPolicy;
     var CurveTag;
     (function (CurveTag) {
         CurveTag[CurveTag["Curve"] = 0] = "Curve";
@@ -1139,10 +1139,10 @@ var Potrace;
         opt = opt || {};
         return PathList.fromBitmap(Bitmap.createFromImage(src), 'turnPolicy' in opt ? opt.turnPolicy : 4 /* Minority */, 'turdSize' in opt ? opt.turdSize : 2, 'alphaMax' in opt ? opt.alphaMax : 1, 'optCurve' in opt ? opt.optCurve : true, 'optTolerance' in opt ? opt.optTolerance : 0.2);
     }
-    Potrace.fromImage = fromImage;
+    potrace.fromImage = fromImage;
     function fromFunction(f, width, height, opt) {
         opt = opt || {};
         return PathList.fromFunction(f, width, height, 'turnPolicy' in opt ? opt.turnPolicy : 4 /* Minority */, 'turdSize' in opt ? opt.turdSize : 2, 'alphaMax' in opt ? opt.alphaMax : 1, 'optCurve' in opt ? opt.optCurve : true, 'optTolerance' in opt ? opt.optTolerance : 0.2);
     }
-    Potrace.fromFunction = fromFunction;
-})(Potrace || (Potrace = {}));
+    potrace.fromFunction = fromFunction;
+})(potrace || (potrace = {}));

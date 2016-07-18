@@ -173,9 +173,9 @@ module potrace {
          const path = this.path;
          const n = path.len, pt = path.pt;
          let dir: number,
-            pivk = new Array(n),
-            nc = new Array(n),
-            ct = new Array(4);
+            pivk: number[] = new Array(n),
+            nc: number[] = new Array(n),
+            ct: number[] = new Array(4);
          this.lon = new Array(n);
 
          const constraint = [new Point(0, 0), new Point(0, 0)],
@@ -280,12 +280,12 @@ module potrace {
 
       private bestPolygon(): void {
          const n = this.path.len;
-         const pen = new Array(n + 1);
-         const prev = new Array(n + 1);
-         const clip0 = new Array(n);
-         const clip1 = new Array(n + 1);
-         const seg0 = new Array(n + 1);
-         const seg1 = new Array(n + 1);
+         const pen: number[] = new Array(n + 1);
+         const prev: number[] = new Array(n + 1);
+         const clip0: number[] = new Array(n);
+         const clip1: number[] = new Array(n + 1);
+         const seg0: number[] = new Array(n + 1);
+         const seg1: number[] = new Array(n + 1);
 
          for (let i = 0; i < n; ++i) {
             let c = mod(this.lon[mod(i - 1, n)] - 1, n);
@@ -646,12 +646,12 @@ module potrace {
       private optiCurve(optTolerance: number): Curve {
          const curve = this.curve;
          const m = curve.n, vert = curve.vertex,
-            pt = new Array(m + 1),
-            pen = new Array(m + 1),
-            len = new Array(m + 1),
-            opt = new Array(m + 1);
+            pt: number[] = new Array(m + 1),
+            pen: number[] = new Array(m + 1),
+            len: number[] = new Array(m + 1),
+            opt: Opti[] = new Array(m + 1);
 
-         const convc = new Array(m), areac = new Array(m + 1);
+         const convc: number[] = new Array(m), areac: number[] = new Array(m + 1);
 
          for (let i = 0; i < m; ++i) {
             if (curve.tag[i] === CurveTag.Curve) {
@@ -702,8 +702,8 @@ module potrace {
          }
          const om = len[m];
          const ocurve = new Curve(om);
-         const s = new Array(om);
-         const t = new Array(om);
+         const s: number[] = new Array(om);
+         const t: number[] = new Array(om);
 
          for (let i = om - 1, j = m; i >= 0; --i) {
             if (pt[j] === j - 1) {

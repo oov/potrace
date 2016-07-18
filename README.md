@@ -13,7 +13,7 @@ img.crossOrigin = 'anonymous';
 img.src = 'https://www.gravatar.com/avatar/ea4d591101f572e45312cf75901032b4?s=512';
 img.onload = function(){
    // Hint: You can also use a canvas as an image.
-   document.body.innerHTML = Potrace.fromImage(img).toSVG(1); // 1 == scale
+   document.body.innerHTML = potrace.fromImage(img).toSVG(1); // 1 == scale
 }
 ```
 
@@ -30,7 +30,7 @@ canvas.height = 200;
 
 var ctx = canvas.getContext('2d');
 ctx.beginPath();
-Potrace.fromFunction(getPixel, canvas.width, canvas.height).strokePath(ctx);
+potrace.fromFunction(getPixel, canvas.width, canvas.height).strokePath(ctx);
 ctx.fill(); // or ctx.stroke();
 document.body.appendChild(canvas);
 ```
@@ -42,7 +42,7 @@ var img = new Image();
 img.crossOrigin = 'anonymous';
 img.src = 'https://www.gravatar.com/avatar/ea4d591101f572e45312cf75901032b4?s=512';
 img.onload = function(){
-   var o = Potrace.fromImage(img).simplify();
+   var o = potrace.fromImage(img).simplify();
 
    var canvas = document.createElement('canvas');
    canvas.width = o.width;

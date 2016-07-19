@@ -1,26 +1,30 @@
 # potrace
 
 A TypeScript port of [Potrace](http://potrace.sourceforge.net).<br>
-It is based on [kilobtye/potrace](https://github.com/kilobtye/potrace).
+This is based on [kilobtye/potrace](https://github.com/kilobtye/potrace).
+
+[ONLINE DEMO](https://oov.github.io/potrace/)
 
 ## USAGE
 
 ### Example 1: Open URL and write SVG
 
 ```javascript
-var img = new Image();
+var img = new Image(), scale = 1;
 img.crossOrigin = 'anonymous';
-img.src = 'https://www.gravatar.com/avatar/ea4d591101f572e45312cf75901032b4?s=512';
-img.onload = function(){
+img.src = 'https://www.gravatar.com/avatar/ea4d591101f572e45312cf75901032b4?s=256';
+img.onload = function() {
+   var div = document.createElement('div');
    // Hint: You can also use a canvas as an image.
-   document.body.innerHTML = potrace.fromImage(img).toSVG(1); // 1 == scale
+   div.innerHTML = potrace.fromImage(img).toSVG(scale);
+   document.body.appendChild(div);
 }
 ```
 
 ### Example 2: Open custom data and stroke to the Canvas
 
 ```javascript
-function getPixel(x, y){
+function getPixel(x, y) {
    return x % 50 > 25 != y % 50 < 25;
 }
 
@@ -40,8 +44,8 @@ document.body.appendChild(canvas);
 ```javascript
 var img = new Image();
 img.crossOrigin = 'anonymous';
-img.src = 'https://www.gravatar.com/avatar/ea4d591101f572e45312cf75901032b4?s=512';
-img.onload = function(){
+img.src = 'https://www.gravatar.com/avatar/ea4d591101f572e45312cf75901032b4?s=256';
+img.onload = function() {
    var o = potrace.fromImage(img).simplify();
 
    var canvas = document.createElement('canvas');
@@ -51,30 +55,25 @@ img.onload = function(){
    var ctx = canvas.getContext('2d');
    ctx.beginPath();
    for (var i = 0; i < o.paths.length; ++i) {
-      var path = o.paths[i];
-      switch(path.length) {
-      case 2:
-         ctx.moveTo(path[0], path[1]);
-         break;
-      case 4:
-         ctx.lineTo(path[0], path[1]);
-         ctx.lineTo(path[2], path[3]);
-         break;
-      case 6:
-         ctx.bezierCurveTo(
-            path[0], path[1],
-            path[2], path[3],
-            path[4], path[5]);
-         break;
-      }
+        var p = o.paths[i];
+        switch (p.length) {
+            case 2:
+                ctx.moveTo(p[0], p[1]);
+                break;
+            case 4:
+                ctx.lineTo(p[0], p[1]);
+                ctx.lineTo(p[2], p[3]);
+                break;
+            case 6:
+                ctx.bezierCurveTo(p[0], p[1], p[2], p[3], p[4], p[5]);
+                break;
+        }
    }
    ctx.closePath();
    ctx.fill();
    document.body.appendChild(canvas);
 }
 ```
-
-
 
 ## LICENSE
 

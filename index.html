@@ -1,176 +1,137 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
-  <head>
-    <meta charset=utf-8>
-    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-    <meta name="description" content="a javascript port of potrace" />
-    <meta name="keywords" content="potrace,trace,vectorization,svg" />
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>potrace</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.5.0/styles/github.min.css">
+<style>
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    }
 
-    <title>potrace</title>
-    <style>
-body {
-  margin: 30px;
-  background-color: #eee;
-}
+    pre code {
+        font-size: 12px;
+        font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    }
+</style>
+<h1>potrace demo</h1>
 
-h1 {
-  font-weight:bold;
-  font-size:2.5em;
-  text-transform:capitalize;
-  letter-spacing: 0.1em;  
-}
+<div data-func="example1">
+    <h2>Example 1: Open URL and write SVG</h2>
+    <pre><code class="javascript"></code></pre>
+    <input type="button" value="Run">
+    <script>
+        function example1(callback) {
+            var img = new Image(),
+                scale = 1;
+            img.crossOrigin = 'anonymous';
+            img.src = 'https://www.gravatar.com/avatar/ea4d591101f572e45312cf75901032b4?s=256';
+            img.onload = function() {
+                var div = document.createElement('div');
+                // Hint: You can also use a canvas as an image.
+                div.innerHTML = potrace.fromImage(img).toSVG(scale);
+                callback(div);
+            }
+        }
+    </script>
+    <div></div>
+</div>
 
-a:link, a:visited{
-  color:#6d6e73;
-}
+<div data-func="example2">
+    <h2>Example 2: Open custom data and stroke to the Canvas</h2>
+    <pre><code class="javascript"></code></pre>
+    <input type="button" value="Run">
+    <script>
+        function example2(callback) {
+            function getPixel(x, y) {
+                return x % 50 > 25 != y % 50 < 25;
+            }
 
-a:hover, a:focus, a:active {
-  color:#444;
-}
+            var canvas = document.createElement('canvas');
+            canvas.width = 200;
+            canvas.height = 200;
 
-p{
-  margin: 5px;
-}
+            var ctx = canvas.getContext('2d');
+            ctx.beginPath();
+            potrace.fromFunction(getPixel, canvas.width, canvas.height).strokePath(ctx);
+            ctx.fill(); // or ctx.stroke();
+            callback(canvas);
+        }
+    </script>
+    <div></div>
+</div>
 
-#imgdiv, #svgdiv {
-  display: none;
-  border: 2px solid #ccc;
-  margin: 10px 0;
-  padding: 10px;
-  border-radius: 5px;
-}
+<div data-func="example3">
+    <h2>Example 3: Open URL and get Paths</h2>
+    <pre><code class="javascript"></code></pre>
+    <input type="button" value="Run">
+    <script>
+        function example3(callback) {
+            var img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.src = 'https://www.gravatar.com/avatar/ea4d591101f572e45312cf75901032b4?s=256';
+            img.onload = function() {
+                var o = potrace.fromImage(img).simplify();
 
-#drop {
-  border: 2px dashed #ccc;
-  width: 170px;
-  padding: 10px;
-  margin: 20px 0;
-  text-align: center;
-  border-radius: 5px;
-}
- 
-#drop.hovering{
-  border: 2px dashed #333;
-}
+                var canvas = document.createElement('canvas');
+                canvas.width = o.width;
+                canvas.height = o.height;
 
-#run, #save{
-  border: 1px solid #555;
-  border-radius: 5px;
-  padding: 2px 5px;
-  text-decoration: none;
-  background-color: #ddd;
-}
+                var ctx = canvas.getContext('2d');
+                ctx.beginPath();
+                for (var i = 0; i < o.paths.length; ++i) {
+                    var p = o.paths[i];
+                    switch (p.length) {
+                        case 2:
+                            ctx.moveTo(p[0], p[1]);
+                            break;
+                        case 4:
+                            ctx.lineTo(p[0], p[1]);
+                            ctx.lineTo(p[2], p[3]);
+                            break;
+                        case 6:
+                            ctx.bezierCurveTo(p[0], p[1], p[2], p[3], p[4], p[5]);
+                            break;
+                    }
+                }
+                ctx.closePath();
+                ctx.fill();
+                callback(canvas);
+            }
+        }
+    </script>
+    <div></div>
+</div>
 
-#run:hover, #save:hover{
-  background-color: #eee;
-}
-
-#imageInput {
-  display: none;
-}
-
-    </style>	
-  </head>
-
-  <body>
-    <header>
-      <h1>potrace</h1>
-    </header>
-    	
-    <article>
-      <p>A javascript port of <a href="http://potrace.sourceforge.net" target="_blank">Potrace</a>.</p>
-      <p><a href="https://github.com/kilobtye/potrace">source code</a></p>
-      <input type="file" id="imageInput" accept="image/*">
-      <div id="drop"><a href="#" id="imageSelect">open an image</a> <br> or drag an image here</div>
-      <div>
-        <a href="#" id="run">open Yao.jpg</a>
-        <a href="#" id="save">download</a>
-      </div>
-      <div id="imgdiv"> </div>
-      <div> </div>
-      <div id="svgdiv"> </div>
-    </article>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.5.0/highlight.min.js"></script>
 <script src="potrace.js"></script>
 <script>
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = 'https://www.gravatar.com/avatar/ea4d591101f572e45312cf75901032b4?s=256';
 
-window.onload = function(){
-  var imageSelect = document.getElementById("imageSelect"),
-      imageInput = document.getElementById("imageInput");  
-  imageSelect.addEventListener("click", function (e) {
-    imageInput.click();
-    e.preventDefault();
-  }, false);
-  
-  imageInput.addEventListener("change", function (e) {
-    handleFiles(this.files);
-  }, false);
-  
-  document.getElementById("run").addEventListener("click", function (e) {
-    Potrace.loadImageFromUrl("yao.jpg");
-    Potrace.process(function(){
-      displayImg();
-      displaySVG(3);
-    });
-  }, false);
-  
-  document.getElementById("save").addEventListener("click", function (e) {
-	 e.target.download = "potrace" + (new Date()).toLocaleTimeString() + ".svg";
-	 e.target.href = "data:image/svg+xml;," + Potrace.getSVG(1);
-  }, false);  
-  
-  var drop = document.getElementById('drop');
-  drop.addEventListener("dragenter", function (e) {
-    if (e.preventDefault) e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    this.classList.add('hovering');
-    return false;
-  }, false);
-  
-  drop.addEventListener("dragleave", function (e) {
-    if (e.preventDefault) e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    this.classList.remove('hovering');
-    return false;
-  }, false);
-  
-  drop.addEventListener("dragover", function (e) {
-    if (e.preventDefault) e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    this.classList.add('hovering');
-    return false;
-  }, false);
-  
-  drop.addEventListener("drop", function (e) {
-    if (e.preventDefault) e.preventDefault();
-    this.classList.remove('hovering');
-    handleFiles(e.dataTransfer.files);
-    return false;
-  }, false);
-};
+    function demo(elem) {
+        elem.querySelector('input').addEventListener('click', function(e) {
+            var result = elem.querySelector('div');
+            result.innerHTML = 'processing...';
+            window[elem.getAttribute('data-func')](function(elem) {
+                result.innerHTML = '';
+                result.appendChild(elem);
+            });
+        }, false);
+        elem.querySelector('code').appendChild(
+            document.createTextNode(elem.querySelector('script').innerHTML)
+        );
+    }
 
-function handleFiles(files) {
-  Potrace.loadImageFromFile(files[0]);
-  Potrace.process(function(){
-    displayImg();
-    displaySVG(1);
-  });
-}
-
-function displayImg(){
-  var imgdiv = document.getElementById('imgdiv');
-  imgdiv.style.display = 'inline-block';
-  imgdiv.innerHTML = "<p>Input image:</p>";
-  imgdiv.appendChild(Potrace.img);
-}
-
-function displaySVG(size, type){
-  var svgdiv = document.getElementById('svgdiv');
-  svgdiv.style.display = 'inline-block';
-  svgdiv.innerHTML = "<p>Result:</p>" + Potrace.getSVG(size, type);
-}
-
+    window.addEventListener('DOMContentLoaded', function() {
+        var elems = document.querySelectorAll('div[data-func]');
+        for (var i = 0; i < elems.length; ++i) {
+            demo(elems[i]);
+        }
+        hljs.initHighlightingOnLoad();
+    }, false);
 </script>
 
-  </body>
 </html>
